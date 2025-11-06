@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Call manager - Taskalys</title>
+    <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@100;200;300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h2 class="sidebar-logo">
+                    <img src="assets/logo.svg" alt="Taskalys" class="logo-img">
+                </h2>
+                <button class="toggle-btn" id="toggleBtn">
+                    <i data-lucide="chevron-left"></i>
+                </button>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <ul class="nav-list">
+                    <li class="nav-item">
+                        <a href="#" class="nav-link active" data-section="dashboard">
+                            <i data-lucide="activity"></i>
+                            <span class="nav-text">Dashboard</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" class="nav-link" data-section="prospects">
+                            <i data-lucide="users"></i>
+                            <span class="nav-text">Prospects</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" class="nav-link" data-section="disponibilites">
+                            <i data-lucide="calendar"></i>
+                            <span class="nav-text">Disponibilités</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" class="nav-link" data-section="script">
+                            <i data-lucide="file-text"></i>
+                            <span class="nav-text">Script</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" class="nav-link" data-section="presentation">
+                            <i data-lucide="presentation"></i>
+                            <span class="nav-text">Présentation</span>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+            
+            <!-- User Section -->
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <img src="assets/user-avatar.png" alt="Utilisateur" class="user-avatar">
+                    <div class="user-details">
+                        <span class="user-name">Prénom Nom</span>
+                    </div>
+                </div>
+                <button class="logout-btn" id="logoutBtn">
+                    <i data-lucide="log-out"></i>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="top-header">
+                <button class="menu-toggle" id="menuToggle">
+                    <i data-lucide="menu"></i>
+                </button>
+                <h1 class="page-title" id="pageTitle">Dashboard</h1>
+            </header>
+
+            <div class="content-wrapper">
+                <!-- Dashboard Section -->
+                <section class="content-section active" id="dashboard">
+                    <!-- Mission reminder -->
+                    <div class="mission-reminder" id="missionReminder" style="display: none;">
+                        <div class="mission-icon">
+                            <i data-lucide="target"></i>
+                        </div>
+                        <div class="mission-content">
+                            <p class="mission-greeting" id="missionGreeting"></p>
+                            <p class="mission-text" id="missionText"></p>
+                        </div>
+                    </div>
+                    
+                    <div class="dashboard-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i data-lucide="phone"></i>
+                            </div>
+                            <div class="stat-info">
+                                <h3>0</h3>
+                                <p>Appels aujourd'hui</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i data-lucide="user-check"></i>
+                            </div>
+                            <div class="stat-info">
+                                <h3>0</h3>
+                                <p>Prospects contactés</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i data-lucide="calendar-check"></i>
+                            </div>
+                            <div class="stat-info">
+                                <h3>0</h3>
+                                <p>RDV planifiés</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i data-lucide="trophy"></i>
+                            </div>
+                            <div class="stat-info">
+                                <h3>0%</h3>
+                                <p>Taux de conversion</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Graphique Chiffre d'affaires -->
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <h3>Chiffre d'affaires</h3>
+                        </div>
+                        <canvas id="revenueChart"></canvas>
+                    </div>
+                </section>
+
+                <!-- Disponibilités Section -->
+                <section class="content-section" id="disponibilites">
+                    <div class="calendar-container">
+                        <div class="calendar-header">
+                            <div class="calendar-nav-left">
+                                <button class="btn-nav" id="prevBtn">
+                                    <i data-lucide="chevron-left"></i>
+                                </button>
+                                <button class="btn-nav" id="nextBtn">
+                                    <i data-lucide="chevron-right"></i>
+                                </button>
+                                <h3 class="calendar-title" id="calendarTitle">Semaine du ...</h3>
+                            </div>
+                            <div class="calendar-nav-right">
+                                <div class="view-selector">
+                                    <button class="view-btn" data-view="jour">Jour</button>
+                                    <button class="view-btn active" data-view="semaine">Semaine</button>
+                                    <button class="view-btn" data-view="mois">Mois</button>
+                                </div>
+                                <button class="btn btn-secondary" id="todayBtn">Aujourd'hui</button>
+                            </div>
+                        </div>
+                        <div class="calendar-view" id="calendarView">
+                            <!-- Le contenu sera généré dynamiquement selon la vue -->
+                        </div>
+                        <div class="calendar-loading" id="calendarLoading" style="display: none;">
+                            <div class="loading-spinner"></div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Prospects Section -->
+                <section class="content-section" id="prospects">
+                    <div class="section-header">
+                        <div class="prospects-search-container">
+                            <div class="search-wrapper">
+                                <i data-lucide="search" class="search-icon"></i>
+                                <input type="text" id="prospectsSearch" class="search-input" placeholder="Rechercher un prospect...">
+                            </div>
+                            <div class="prospects-filter-container">
+                                <button class="prospect-filter-tag" data-filter="called" id="filterCalled">Déjà contactés</button>
+                                <button class="prospect-filter-tag" data-filter="not_called" id="filterNotCalled">Non contactés</button>
+                            </div>
+                        </div>
+                        <button class="btn btn-primary" id="addProspectBtn">
+                            <i data-lucide="plus"></i> Ajouter un prospect
+                        </button>
+                    </div>
+                    <div class="section-content">
+                        <div class="prospects-loading" id="prospectsLoading" style="display: none;">
+                            <div class="loading-spinner"></div>
+                        </div>
+                        <div class="table-container" id="prospectsTableContainer">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Nom</th>
+                                        <th>Entreprise</th>
+                                        <th>Téléphone</th>
+                                        <th>Email</th>
+                                        <th>Statut</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td colspan="6" class="empty-table">
+                                            <i data-lucide="inbox"></i>
+                                            <p>Aucun prospect pour le moment</p>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Script Section -->
+                <section class="content-section" id="script">
+                    <div class="script-container">
+                        <div class="script-content">
+                            <div class="script-intro">
+                                <p class="script-intro-text">
+                                    <strong>Bonjour madame ou monsieur, <span class="script-highlight">[nom]</span>,</strong> <span class="script-name">Nolan Parent</span> de société <span class="script-company">Taskalys</span>
+                                </p>
+                                <p class="script-question script-primary">Est-ce que je vous dérange ?</p>
+                            </div>
+
+                            <div class="script-section">
+                                <p class="script-text">
+                                    Je vous appelle car nous accompagnons nos clients dans l'identification et automatisation des tâches répétitives, et ainsi redonner l'importance aux activités à forte valeur ajoutée. <span class="script-alternative">/ Pour vous faire gagner du temps et économiser de l'argent</span>
+                                </p>
+                                <p class="script-question script-primary">Est-ce que c'est aujourd'hui quelque chose qui vous parle ?</p>
+                            </div>
+
+                            <div class="script-section">
+                                <p class="script-question script-secondary">Peut-être est-ce que vous, dans vos semaines, vous avez le sentiment qu'il y a des tâches qui vous éloigne de votre cœur d'activité ?</p>
+                                <p class="script-question script-secondary">Pour lesquelles vous vous êtes dit un jour <em>"il y a sûrement moyen d'automatiser cela"</em></p>
+                                <p class="script-question script-primary">Quels sont ces tâches ?</p>
+                                <p class="script-question script-primary">Quels sont vos logiciels aujourd'hui ?</p>
+                                <p class="script-question script-primary">Est-ce que vous avez déjà identifié des solutions à ces problématiques ?</p>
+                                <p class="script-question script-primary">Est-ce que cette problématique-là s'adresse uniquement à vous ? Ou à vos équipes, commercial, admin, comptabilité, marketing, RH ?</p>
+                            </div>
+
+                            <div class="script-section">
+                                <p class="script-text script-emphasis">
+                                    Justement, c'est pourquoi on a développé <span class="script-company">Taskalys</span>.
+                                </p>
+                                <p class="script-text">
+                                    Nous sommes une agence nantaise récemment fondée, et on intervient auprès de nos clients sur l'ensemble du grand ouest afin de développer des systèmes d'automatisation sur mesure qui permettent de revaloriser leurs missions à forte valeur ajoutée.
+                                </p>
+                                <p class="script-text">
+                                    Concrètement, nous développons des programmes informatiques autonomes qui viennent se brancher/s'interconnecter à vos tâches humaines, outils, et processus actuels.
+                                </p>
+                            </div>
+
+                            <div class="script-section">
+                                <p class="script-text">
+                                    Nous sommes spécialisés dans l'intervention auprès des <strong>PME et ETI</strong>, dans tous secteurs d'activité. Pour nos clients déjà accompagnés, ce sont déjà <strong class="script-highlight-blue">plus de 21h par mois et par collaborateur économisées</strong>. On est capable d'intervenir sur l'ensemble des métiers de votre entreprise, tel quel <span class="script-note">(préciser en fonction du client (lead, sales, compta [donner exemple en rapport]))</span>.
+                                </p>
+                                <p class="script-example">
+                                    <strong>Exemple :</strong> Tel que les services ; on a eu pour exemple l'occasion d'accompagner une régie publicitaire en leur automatisant la génération de plus <strong>1600 PowerPoint</strong> leur économisant <strong>20h par mois</strong> ainsi que le mailing de prospection automatisé, aussi bien dans le secteur de l'industrie, avec l'automatisation de la création de plus de <strong>6000 références produits</strong> qui ont économiser plus de <strong>450 heures de travail par an</strong>.
+                                </p>
+                            </div>
+
+                            <div class="script-section">
+                                <p class="script-text script-emphasis">
+                                    Ce que je vous propose, c'est qu'on puisse prendre un créneau ensemble en Visio de <strong>20-30 minutes</strong> pour vous présenter en quoi nous pouvons vous apporter des solutions.
+                                </p>
+                                <p class="script-question script-primary">Est-ce que vous voyez un inconvénient à ce qu'on réalise un appel visio ensemble la semaine prochaine ?</p>
+                                <p class="script-question script-primary">Donc quelles seraient vos disponibilités cette semaine/semaine prochaine ?</p>
+                            </div>
+
+                            <div class="script-section script-final">
+                                <p class="script-note script-action">[Définir Visio]</p>
+                                <p class="script-text">Écoutez, je vous joins l'invitation par email.</p>
+                                <p class="script-text script-thanks">[Remerciements]</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Présentation Section -->
+                <section id="presentation" class="content-section">
+                    <div class="presentation-container">
+                        <iframe src="assets/presentation.pdf#toolbar=1&navpanes=0" class="presentation-iframe" frameborder="0"></iframe>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div id="confirmModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Confirmer la suppression</h3>
+                <button class="modal-close" id="closeModal">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p id="confirmMessage">Êtes-vous sûr de vouloir supprimer ce prospect ?</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelDelete">Annuler</button>
+                <button class="btn btn-danger" id="confirmDelete">Supprimer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dépôt Modal -->
+    <div id="depotModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Dépôt</h3>
+                <button class="modal-close" id="closeDepotModal">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="depot-options">
+                    <label class="depot-option depot-option-highlight">
+                        <input type="radio" name="depotStatus" value="recorded" checked>
+                        <span class="depot-option-label">J'ai l'enregistrement</span>
+                    </label>
+                    <label class="depot-option">
+                        <input type="radio" name="depotStatus" value="not_recorded">
+                        <span class="depot-option-label">Je n'ai pas pu enregistrer</span>
+                    </label>
+                    <label class="depot-option">
+                        <input type="radio" name="depotStatus" value="no_contact">
+                        <span class="depot-option-label">Je n'ai pas eu le prospect à deux reprises</span>
+                    </label>
+                    <label class="depot-option">
+                        <input type="radio" name="depotStatus" value="other">
+                        <span class="depot-option-label">Autre</span>
+                    </label>
+                </div>
+                <div class="depot-datetime">
+                    <label for="depotDateTime" class="depot-datetime-label">Date et heure de l'enregistrement</label>
+                    <input type="datetime-local" id="depotDateTime" class="depot-datetime-input">
+                </div>
+                <div class="depot-note">
+                    <label for="depotNote" class="depot-note-label">Ajouter une note</label>
+                    <textarea id="depotNote" class="depot-note-input" placeholder="Saisissez votre note ici..." rows="4"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelDepot">Annuler</button>
+                <button class="btn btn-primary" id="confirmDepot">Valider</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Prospect Modal -->
+    <div id="addProspectModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Ajouter un prospect</h3>
+                <button class="modal-close" id="closeAddProspectModal">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="addProspectForm">
+                    <div class="form-group">
+                        <label for="prospectFirstName" class="form-label">Prénom</label>
+                        <input type="text" id="prospectFirstName" class="form-input" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="prospectLastName" class="form-label">Nom</label>
+                        <input type="text" id="prospectLastName" class="form-input" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="prospectEmail" class="form-label">Email</label>
+                        <input type="email" id="prospectEmail" class="form-input" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="prospectPhone" class="form-label">Téléphone</label>
+                        <input type="tel" id="prospectPhone" class="form-input" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="prospectSociety" class="form-label">Entreprise</label>
+                        <input type="text" id="prospectSociety" class="form-input" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="prospectRole" class="form-label">Rôle</label>
+                        <input type="text" id="prospectRole" class="form-input" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelAddProspect">Annuler</button>
+                <button class="btn btn-primary" id="submitAddProspect">Ajouter</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Prospect Details Modal -->
+    <div id="prospectDetailsModal" class="modal-overlay">
+        <div class="modal-content modal-content-large">
+            <div class="modal-header">
+                <h3 class="modal-title" id="prospectDetailsTitle">Détails du prospect</h3>
+                <button class="modal-close" id="closeProspectDetailsModal">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <!-- Infos du tableau -->
+                <div class="prospect-details-section">
+                    <h4 class="prospect-section-title">Informations</h4>
+                    <div class="prospect-info-grid" id="prospectInfoGrid">
+                        <!-- Rempli dynamiquement -->
+                    </div>
+                </div>
+
+                <!-- Résumé de la personne -->
+                <div class="prospect-details-section">
+                    <h4 class="prospect-section-title">Résumé de la personne</h4>
+                    <div class="prospect-summary" id="prospectSummary">
+                        <p class="prospect-summary-placeholder">Aucun résumé disponible pour le moment.</p>
+                    </div>
+                </div>
+
+                <!-- Activités de l'entreprise -->
+                <div class="prospect-details-section">
+                    <h4 class="prospect-section-title">Activités de l'entreprise</h4>
+                    <div class="prospect-activities" id="prospectActivities">
+                        <p class="prospect-activities-placeholder">Aucune activité renseignée pour le moment.</p>
+                    </div>
+                </div>
+
+                <!-- Timeline des appels -->
+                <div class="prospect-details-section">
+                    <h4 class="prospect-section-title">Historique des appels</h4>
+                    <div class="prospect-timeline" id="prospectTimeline">
+                        <!-- Timeline items -->
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="closeProspectDetails">Fermer</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Supabase configuration
+        const SUPABASE_URL = 'https://umyfwukmztoheladdskl.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVteWZ3dWttenRvaGVsYWRkc2tsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg5NTk0NjgsImV4cCI6MjA3NDUzNTQ2OH0.VfPX_hF79hinKyDc4qTJ6IHZMiY82BUoBtsJg9uGpzc';
+        
+        window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const supabase = window.supabaseClient;
+
+        // Check authentication and redirect if not logged in
+        async function checkAuth() {
+            const { data: { session }, error } = await supabase.auth.getSession();
+            
+            if (error || !session) {
+                // No session, redirect to login
+                window.location.href = 'index.html';
+                return;
+            }
+            
+            // User is authenticated, load user info
+            loadUserInfo(session.user);
+        }
+
+        // Load user information from users table
+        async function loadUserInfo(authUser) {
+            try {
+                // Get user data from users table using UUID
+                const { data: userData, error } = await supabase
+                    .from('users')
+                    .select('first_name, last_name, email, avatar_url, role, mission')
+                    .eq('uuid', authUser.id)
+                    .single();
+
+                if (error) {
+                    console.error('Error fetching user data:', error);
+                    // Fallback to auth user email
+                    updateUserDisplay(authUser.email, null, null);
+                    return;
+                }
+
+                if (userData) {
+                    // Update user display with data from users table
+                    const fullName = userData.first_name && userData.last_name 
+                        ? `${userData.first_name} ${userData.last_name}`
+                        : userData.first_name || userData.last_name || authUser.email?.split('@')[0] || 'Utilisateur';
+                    
+                    updateUserDisplay(fullName, userData.avatar_url, userData.email);
+                    
+                    // Update script commercial with user name if needed
+                    updateScriptName(userData.first_name, userData.last_name);
+                    
+                    // Display mission if available
+                    displayMission(userData.mission, userData.first_name);
+                } else {
+                    // No user data found, use auth email
+                    updateUserDisplay(authUser.email?.split('@')[0] || 'Utilisateur', null, authUser.email);
+                }
+            } catch (error) {
+                console.error('Error loading user info:', error);
+                // Fallback to auth user email
+                updateUserDisplay(authUser.email?.split('@')[0] || 'Utilisateur', null, authUser.email);
+            }
+        }
+
+        // Display mission reminder on dashboard
+        function displayMission(mission, firstName) {
+            const missionReminder = document.getElementById('missionReminder');
+            const missionText = document.getElementById('missionText');
+            const missionGreeting = document.getElementById('missionGreeting');
+            
+            if (!missionReminder || !missionText || !missionGreeting) return;
+            
+            if (mission && mission.trim() !== '') {
+                // Display greeting with first name
+                if (firstName && firstName.trim() !== '') {
+                    missionGreeting.textContent = `Bonjour ${firstName} !`;
+                } else {
+                    missionGreeting.textContent = 'Bonjour !';
+                }
+                
+                missionText.textContent = mission;
+                missionReminder.style.display = 'flex';
+                
+                // Reinitialize icons
+                if (typeof lucide !== 'undefined') {
+                    lucide.createIcons();
+                }
+            } else {
+                missionReminder.style.display = 'none';
+            }
+        }
+
+        // Update user display in sidebar
+        function updateUserDisplay(name, avatarUrl, email) {
+            const userNameEl = document.querySelector('.user-name');
+            const userAvatarEl = document.querySelector('.user-avatar');
+            
+            if (userNameEl) {
+                userNameEl.textContent = name;
+            }
+            
+            if (userAvatarEl && avatarUrl) {
+                userAvatarEl.src = avatarUrl;
+                userAvatarEl.alt = name;
+            }
+        }
+
+        // Update script commercial with user name
+        function updateScriptName(firstName, lastName) {
+            if (firstName && lastName) {
+                const scriptNameEl = document.querySelector('.script-name');
+                if (scriptNameEl) {
+                    scriptNameEl.textContent = `${firstName} ${lastName}`;
+                }
+            }
+        }
+
+        // Initialize auth check
+        checkAuth();
+    </script>
+    <script src="script.js"></script>
+    <script>
+        // Initialize Lucide icons
+        lucide.createIcons();
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,27 @@
+<svg width="5770" height="7373" viewBox="0 0 5770 7373" fill="none" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g clip-path="url(#clip0_631_1976)">
+<path d="M2472.77 193.158L2555.06 770.13L1637.94 900.938L1974.58 3261.22L1242.47 3365.64L905.827 1005.36L-6.8385 1135.53L-89.1312 558.557L2472.77 193.158Z" stroke="#D8D8D8" stroke-width="2"/>
+<path d="M5754 3183V-21H2789L3246.92 3183H5754Z" fill="url(#pattern0_631_1976)"/>
+<path d="M3193.13 3902.48L3110.84 4479.45L4027.96 4610.26L3691.31 6970.54L4423.43 7074.96L4760.07 4714.68L5672.74 4844.85L5755.03 4267.88L3193.13 3902.48Z" stroke="#D8D8D8" stroke-width="2"/>
+<path d="M-88 7278V4074H2877L2419.08 7278H-88Z" fill="url(#pattern1_631_1976)"/>
+</g>
+<defs>
+<clipPath id="clip0_631_1976">
+<rect width="5770" height="7373" fill="white"/>
+</clipPath>
+<pattern id="pattern0_631_1976" patternUnits="userSpaceOnUse" patternTransform="matrix(58.0176 0 0 116.035 2789 -21)" preserveAspectRatio="none" viewBox="0 0 73.44 146.88" width="1" height="1">
+<use xlink:href="#pattern0_631_1976_inner" transform="translate(-73.44 0)"/>
+<g id="pattern0_631_1976_inner">
+<circle cx="6" cy="6" r="6" fill="#D8D8D8"/>
+</g>
+<use xlink:href="#pattern0_631_1976_inner" transform="translate(-36.72 73.44)"/>
+<use xlink:href="#pattern0_631_1976_inner" transform="translate(36.72 73.44)"/>
+</pattern><pattern id="pattern1_631_1976" patternUnits="userSpaceOnUse" patternTransform="matrix(-58.0176 0 0 116.035 2877 4074)" preserveAspectRatio="none" viewBox="0 0 73.44 146.88" width="1" height="1">
+<use xlink:href="#pattern1_631_1976_inner" transform="translate(-73.44 0)"/>
+<g id="pattern1_631_1976_inner">
+<circle cx="6" cy="6" r="6" fill="#D8D8D8"/>
+</g>
+<use xlink:href="#pattern1_631_1976_inner" transform="translate(-36.72 73.44)"/>
+<use xlink:href="#pattern1_631_1976_inner" transform="translate(36.72 73.44)"/>
+</pattern></defs>
+</svg>
