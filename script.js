@@ -1,3 +1,45 @@
+// Toast notification system
+function showToast(message, type = 'success') {
+    const toastContainer = document.getElementById('toastContainer');
+    if (!toastContainer) return;
+    
+    // Create toast element
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    
+    // Icon based on type
+    let iconName = 'check-circle';
+    if (type === 'error') iconName = 'alert-circle';
+    if (type === 'warning') iconName = 'alert-triangle';
+    if (type === 'info') iconName = 'info';
+    
+    toast.innerHTML = `
+        <div class="toast-icon">
+            <i data-lucide="${iconName}"></i>
+        </div>
+        <div class="toast-message">${message}</div>
+    `;
+    
+    // Add to container
+    toastContainer.appendChild(toast);
+    
+    // Initialize Lucide icons for the toast
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+    
+    // Remove after 3 seconds with fade out
+    setTimeout(() => {
+        toast.classList.add('toast-fadeout');
+        // Remove from DOM after fade out animation completes
+        setTimeout(() => {
+            if (toast.parentElement) {
+                toast.parentElement.removeChild(toast);
+            }
+        }, 500); // Match the CSS transition duration
+    }, 3000);
+}
+
 // Custom Alert and Confirm functions
 function customAlert(message, title = 'Information') {
     return new Promise((resolve) => {
@@ -175,6 +217,8 @@ function switchToSection(sectionId) {
             const sectionNames = {
                 'dashboard': 'Dashboard',
                 'disponibilites': 'Disponibilités',
+                'rappels': 'Rappels',
+                'historique': 'Historique des appels',
                 'prospects': 'Prospects',
                 'script': 'Script',
                 'presentation': 'Présentation'
@@ -198,6 +242,8 @@ function switchToSection(sectionId) {
                     // Hide loading and show content when data is loaded
                     if (dashboardLoading) dashboardLoading.style.display = 'none';
                     if (dashboardContent) dashboardContent.style.display = 'block';
+                    // Re-animate stats to show the animation on menu click
+                    setTimeout(() => reanimateStats(), 100);
                 }).catch(() => {
                     // Hide loading even on error
                     if (dashboardLoading) dashboardLoading.style.display = 'none';
@@ -207,13 +253,38 @@ function switchToSection(sectionId) {
             
             // Load prospects if prospects section is shown
             if (sectionId === 'prospects') {
+                // Show spinner immediately
+                const section = document.getElementById('prospects');
+                if (section) {
+                    const sectionHeader = section.querySelector('.section-header');
+                    const prospectsLoading = document.getElementById('prospectsLoading');
+                    const prospectsTableContainer = document.getElementById('prospectsTableContainer');
+                    if (sectionHeader) sectionHeader.style.display = 'none';
+                    if (prospectsTableContainer) prospectsTableContainer.style.display = 'none';
+                    if (prospectsLoading) prospectsLoading.style.display = 'flex';
+                }
                 setTimeout(() => {
                     loadProspects();
                     // Initialize search icon
                     if (typeof lucide !== 'undefined') {
                         lucide.createIcons();
                     }
-                }, 100);
+                }, 50);
+            }
+            
+            // Load calendar if disponibilites section is shown
+            if (sectionId === 'disponibilites') {
+                loadDisponibilites();
+            }
+            
+            // Load rappels calendar if rappels section is shown
+            if (sectionId === 'rappels') {
+                loadRappels();
+            }
+            
+            // Load historique if historique section is shown
+            if (sectionId === 'historique') {
+                loadHistorique();
             }
             
         // Save active section to localStorage
@@ -248,15 +319,49 @@ function restoreActiveSection() {
             switchToSection('dashboard');
         }
     } else {
-        // No saved section, use default (dashboard) and update title
-        const sectionNames = {
-            'dashboard': 'Dashboard',
-            'disponibilites': 'Disponibilités',
-            'prospects': 'Prospects',
-            'script': 'Script',
-            'presentation': 'Présentation'
-        };
-        document.title = `${sectionNames['dashboard']} - Call manager - Taskalys`;
+        // No saved section, load default (dashboard) explicitly
+        switchToSection('dashboard');
+    }
+}
+
+// Wait for Supabase client and currentUserId to be available
+async function waitForSupabaseReady(maxAttempts = 50, intervalMs = 200) {
+    let attempts = 0;
+    while (attempts < maxAttempts) {
+        if (typeof window.supabaseClient !== 'undefined' && window.currentUserId) {
+            return true;
+        }
+        await new Promise(r => setTimeout(r, intervalMs));
+        attempts++;
+    }
+    return false; // Timed out
+}
+
+// After initial restoration, ensure data loads once Supabase is ready
+async function ensureSupabaseAndReload() {
+    const initialSection = localStorage.getItem('activeSection') || 'dashboard';
+    const ready = await waitForSupabaseReady();
+    if (!ready) {
+        console.warn('Supabase not ready after waiting; data may be incomplete on first load');
+        return;
+    }
+    // Re-trigger loading functions explicitly based on section
+    if (initialSection === 'dashboard') {
+        loadDashboardData();
+    } else if (initialSection === 'prospects') {
+        loadProspects();
+    } else if (initialSection === 'disponibilites') {
+        if (typeof loadDisponibilites === 'function') {
+            loadDisponibilites();
+        }
+    } else if (initialSection === 'rappels') {
+        if (typeof loadRappels === 'function') {
+            loadRappels();
+        }
+    } else if (initialSection === 'historique') {
+        if (typeof loadHistorique === 'function') {
+            loadHistorique();
+        }
     }
 }
 
@@ -264,33 +369,13 @@ function restoreActiveSection() {
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         restoreActiveSection();
-        // Load dashboard data immediately if dashboard is active
-        const activeSection = document.querySelector('.content-section.active');
-        if (activeSection && activeSection.id === 'dashboard') {
-            loadDashboardData();
-        } else {
-            // If dashboard is not active, hide loading and show content
-            const dashboardLoading = document.getElementById('dashboardLoading');
-            const dashboardContent = document.getElementById('dashboardContent');
-            if (dashboardLoading) dashboardLoading.style.display = 'none';
-            if (dashboardContent) dashboardContent.style.display = 'block';
-        }
+        ensureSupabaseAndReload();
     });
 } else {
     // DOM is already loaded, restore after a short delay to ensure all elements are ready
     setTimeout(() => {
         restoreActiveSection();
-        // Load dashboard data immediately if dashboard is active
-        const activeSection = document.querySelector('.content-section.active');
-        if (activeSection && activeSection.id === 'dashboard') {
-            loadDashboardData();
-        } else {
-            // If dashboard is not active, hide loading and show content
-            const dashboardLoading = document.getElementById('dashboardLoading');
-            const dashboardContent = document.getElementById('dashboardContent');
-            if (dashboardLoading) dashboardLoading.style.display = 'none';
-            if (dashboardContent) dashboardContent.style.display = 'block';
-        }
+        ensureSupabaseAndReload();
     }, 100);
 }
 
@@ -369,8 +454,141 @@ const API = {
     }
 };
 
+// Support modal handlers
+(function setupSupportFeature() {
+    // Attach after DOM is ready
+    const init = () => {
+        const supportBtn = document.getElementById('supportBtn');
+        const supportModal = document.getElementById('supportModal');
+        const closeBtn = document.getElementById('closeSupportModal');
+        const cancelBtn = document.getElementById('cancelSupportBtn');
+        const sendBtn = document.getElementById('sendSupportBtn');
+        const messageEl = document.getElementById('supportMessage');
+        const errorEl = document.getElementById('supportError');
+        
+        if (!supportBtn || !supportModal) return;
+        
+        const showSupportModal = () => {
+            supportModal.classList.add('active');
+            messageEl.value = '';
+            errorEl.style.display = 'none';
+            // Reinit icons inside modal
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        };
+        
+        const hideSupportModal = () => {
+            supportModal.classList.remove('active');
+        };
+        
+        const sendSupportMessage = async () => {
+            const msg = (messageEl.value || '').trim();
+            if (!msg) {
+                errorEl.style.display = 'block';
+                return;
+            }
+            errorEl.style.display = 'none';
+            sendBtn.disabled = true;
+            const originalText = sendBtn.textContent;
+            sendBtn.textContent = 'Envoi...';
+            
+            try {
+                // Build payload
+                const payload = {
+                    user_id: window.currentUserId || null,
+                    message: msg,
+                    timestamp: new Date().toISOString()
+                };
+                
+                const res = await fetch('https://host.taskalys.app/webhook/support', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                if (!res.ok) {
+                    const text = await res.text();
+                    throw new Error(`HTTP ${res.status} - ${text}`);
+                }
+                
+                showToast('Message de support envoyé', 'success');
+                hideSupportModal();
+            } catch (err) {
+                console.error('Support send error:', err);
+                showToast("Échec de l'envoi du message de support", 'error');
+            } finally {
+                sendBtn.disabled = false;
+                sendBtn.textContent = originalText;
+            }
+        };
+        
+        supportBtn.addEventListener('click', showSupportModal);
+        if (closeBtn) closeBtn.addEventListener('click', hideSupportModal);
+        if (cancelBtn) cancelBtn.addEventListener('click', hideSupportModal);
+        if (sendBtn) sendBtn.addEventListener('click', sendSupportMessage);
+    };
+    
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+})();
+
 // Chart instance
 let revenueChart = null;
+
+// Smooth number animation for stats
+function animateCount(element, targetValue, duration = 800, suffix = '') {
+    if (!element) return;
+    const text = (element.textContent || '0').replace(/[^0-9.,]/g, '').replace(',', '.');
+    let startValue = parseFloat(text);
+    if (isNaN(startValue)) startValue = 0;
+    const isFloat = typeof targetValue === 'number' && !Number.isInteger(targetValue);
+    const startTime = performance.now();
+    const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+
+    function frame(now) {
+        const elapsed = now - startTime;
+        const t = Math.min(1, elapsed / duration);
+        const eased = easeOutCubic(t);
+        const value = startValue + (targetValue - startValue) * eased;
+        element.textContent = isFloat ? value.toFixed(1) + suffix : Math.round(value) + suffix;
+        if (t < 1) requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+}
+
+// Re-animate dashboard stats with current values
+function reanimateStats() {
+    const callsThisWeekEl = document.getElementById('callsThisWeek');
+    const totalContactsEl = document.getElementById('totalContacts');
+    const bookedAppointmentsEl = document.getElementById('bookedAppointments');
+    const conversionRateEl = document.getElementById('conversionRate');
+
+    if (callsThisWeekEl) {
+        const currentValue = parseInt(callsThisWeekEl.textContent) || 0;
+        callsThisWeekEl.textContent = '0';
+        animateCount(callsThisWeekEl, currentValue, 900);
+    }
+    if (totalContactsEl) {
+        const currentValue = parseInt(totalContactsEl.textContent) || 0;
+        totalContactsEl.textContent = '0';
+        animateCount(totalContactsEl, currentValue, 900);
+    }
+    if (bookedAppointmentsEl) {
+        const currentValue = parseInt(bookedAppointmentsEl.textContent) || 0;
+        bookedAppointmentsEl.textContent = '0';
+        animateCount(bookedAppointmentsEl, currentValue, 900);
+    }
+    if (conversionRateEl) {
+        const text = conversionRateEl.textContent.replace('%', '').trim();
+        const currentValue = parseFloat(text) || 0;
+        conversionRateEl.textContent = '0%';
+        animateCount(conversionRateEl, currentValue, 900, '%');
+    }
+}
 
 // Initialize Revenue Chart
 function initRevenueChart() {
@@ -550,7 +768,7 @@ async function loadDashboardData() {
             const callsCount = callsThisWeek?.length || 0;
             const callsThisWeekEl = document.getElementById('callsThisWeek');
             if (callsThisWeekEl) {
-                callsThisWeekEl.textContent = callsCount;
+                animateCount(callsThisWeekEl, callsCount, 900);
             }
         }
 
@@ -577,11 +795,17 @@ async function loadDashboardData() {
         if (allCallsError) {
             console.error('Error loading all calls:', allCallsError);
         } else {
-            const uniqueProspects = new Set(allCalls?.map(call => call.prospect_id).filter(Boolean) || []);
+            // Normalize prospect_id to string to avoid 123 vs "123" double counting across refreshes
+            const uniqueProspects = new Set(
+                (allCalls || [])
+                    .map(call => call?.prospect_id)
+                    .filter(id => id !== null && id !== undefined)
+                    .map(id => String(id))
+            );
             totalContactsCount = uniqueProspects.size;
             const totalContactsEl = document.getElementById('totalContacts');
             if (totalContactsEl) {
-                totalContactsEl.textContent = totalContactsCount;
+                animateCount(totalContactsEl, totalContactsCount, 1000);
             }
         }
 
@@ -612,7 +836,7 @@ async function loadDashboardData() {
             const bookedCount = bookedCalls?.length || 0;
             const bookedAppointmentsEl = document.getElementById('bookedAppointments');
             if (bookedAppointmentsEl) {
-                bookedAppointmentsEl.textContent = bookedCount;
+                animateCount(bookedAppointmentsEl, bookedCount, 900);
             }
         }
 
@@ -621,7 +845,7 @@ async function loadDashboardData() {
         const conversionRate = totalContactsCount > 0 ? ((bookedCount / totalContactsCount) * 100).toFixed(1) : 0;
         const conversionRateEl = document.getElementById('conversionRate');
         if (conversionRateEl) {
-            conversionRateEl.textContent = conversionRate + '%';
+            animateCount(conversionRateEl, parseFloat(conversionRate), 1100, '%');
         }
         console.log('Conversion rate:', conversionRate + '%', '(booked:', bookedCount, '/ total contacts:', totalContactsCount, ')');
 
@@ -683,6 +907,9 @@ async function loadDashboardData() {
             updateRevenueChart(last12Months, revenueData);
         }
 
+        // Load call statistics chart
+        await initCallStatsChart();
+
     } catch (error) {
         console.error('Error loading dashboard data:', error);
     } finally {
@@ -691,6 +918,9 @@ async function loadDashboardData() {
         const dashboardContent = document.getElementById('dashboardContent');
         if (dashboardLoading) dashboardLoading.style.display = 'none';
         if (dashboardContent) dashboardContent.style.display = 'block';
+        
+        // Setup call stats listeners after content is loaded
+        setupCallStatsListeners();
     }
 }
 
@@ -818,6 +1048,286 @@ function updateRevenueChart(labels, data) {
     });
 }
 
+// ===== CALL STATISTICS CHART =====
+
+let callStatsChart = null;
+
+// Initialize call statistics chart
+async function initCallStatsChart() {
+    const ctx = document.getElementById('callStatsChart');
+    const emptyState = document.getElementById('callStatsEmpty');
+    if (!ctx) return;
+
+    if (!window.supabaseClient || !window.currentUserId) {
+        console.error('Supabase client or user ID not available for call stats');
+        if (emptyState) emptyState.style.display = 'flex';
+        if (ctx) ctx.style.display = 'none';
+        return;
+    }
+
+    try {
+        // Get period selection
+        const periodSelect = document.getElementById('statsPeriod');
+        const period = periodSelect?.value || 'all';
+
+        // Get all calls for user
+        const { data: allCalls, error } = await window.supabaseClient
+            .from('crm_calls')
+            .select('*')
+            .eq('user_id', window.currentUserId)
+            .order('date', { ascending: true });
+
+        if (error) {
+            console.error('Error loading call stats:', error);
+            if (emptyState) emptyState.style.display = 'flex';
+            if (ctx) ctx.style.display = 'none';
+            return;
+        }
+
+        if (!allCalls || allCalls.length === 0) {
+            // No calls yet
+            if (emptyState) {
+                emptyState.style.display = 'flex';
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            }
+            if (ctx) ctx.style.display = 'none';
+            return;
+        }
+
+        // Filter calls based on period
+        let filteredCalls = allCalls;
+        if (period !== 'all') {
+            const daysAgo = parseInt(period);
+            const cutoffDate = new Date();
+            cutoffDate.setDate(cutoffDate.getDate() - daysAgo);
+            filteredCalls = allCalls.filter(call => new Date(call.date) >= cutoffDate);
+        }
+
+        if (filteredCalls.length === 0) {
+            if (emptyState) {
+                emptyState.style.display = 'flex';
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            }
+            if (ctx) ctx.style.display = 'none';
+            return;
+        }
+
+        // Group calls by day
+        const callsByDay = {};
+        filteredCalls.forEach(call => {
+            const date = new Date(call.date);
+            const dayKey = date.toISOString().split('T')[0];
+            
+            if (!callsByDay[dayKey]) {
+                callsByDay[dayKey] = {
+                    total: 0,
+                    answered: 0, // contacted, booked, voicemail
+                    meetings: 0  // booked only
+                };
+            }
+            
+            callsByDay[dayKey].total++;
+            
+            // Count as answered if contacted, booked, or voicemail
+            if (call.status === 'contacted' || call.status === 'booked' || call.status === 'voicemail') {
+                callsByDay[dayKey].answered++;
+            }
+            
+            // Count meetings
+            if (call.status === 'booked') {
+                callsByDay[dayKey].meetings++;
+            }
+        });
+
+        // Prepare chart data
+        const sortedDays = Object.keys(callsByDay).sort();
+        const labels = sortedDays.map(day => {
+            const date = new Date(day);
+            return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+        });
+
+        const callCounts = sortedDays.map(day => callsByDay[day].total);
+        const answeredCounts = sortedDays.map(day => callsByDay[day].answered);
+        const meetingCounts = sortedDays.map(day => callsByDay[day].meetings);
+
+        // Show chart, hide empty state
+        if (ctx) ctx.style.display = 'block';
+        if (emptyState) emptyState.style.display = 'none';
+
+        // Check which datasets to show
+        const showCalls = document.getElementById('toggleCalls')?.checked !== false;
+        const showPickup = document.getElementById('togglePickupRate')?.checked !== false;
+        const showMeeting = document.getElementById('toggleMeetingRate')?.checked !== false;
+
+        const datasets = [];
+
+        if (showCalls) {
+            datasets.push({
+                label: 'Nombre d\'appels',
+                data: callCounts,
+                borderColor: '#006EFF',
+                backgroundColor: 'rgba(0, 110, 255, 0.1)',
+                borderWidth: 2,
+                fill: true,
+                tension: 0.4,
+                yAxisID: 'y',
+            });
+        }
+
+        if (showPickup) {
+            datasets.push({
+                label: 'Effectif qui a décroché',
+                data: answeredCounts,
+                borderColor: '#22C55E',
+                backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                borderWidth: 2,
+                fill: true,
+                tension: 0.4,
+                yAxisID: 'y',
+            });
+        }
+
+        if (showMeeting) {
+            datasets.push({
+                label: 'Effectif RDV',
+                data: meetingCounts,
+                borderColor: '#F59E0B',
+                backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                borderWidth: 2,
+                fill: true,
+                tension: 0.4,
+                yAxisID: 'y',
+            });
+        }
+
+        // Destroy existing chart
+        if (callStatsChart) {
+            callStatsChart.destroy();
+        }
+
+        // Create new chart
+        callStatsChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                aspectRatio: 2.5,
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        labels: {
+                            font: {
+                                family: 'Sora',
+                                size: 12
+                            },
+                            color: '#19273A',
+                            usePointStyle: true,
+                            padding: 15
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                        titleColor: '#19273A',
+                        bodyColor: '#1D2B3D',
+                        borderColor: '#7b90ad',
+                        borderWidth: 1,
+                        padding: 12,
+                        displayColors: true,
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) {
+                                    label += ': ';
+                                }
+                                label += context.parsed.y;
+                                return label;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Effectifs',
+                            font: {
+                                family: 'Sora',
+                                size: 12
+                            },
+                            color: '#19273A'
+                        },
+                        ticks: {
+                            font: {
+                                family: 'Sora',
+                                size: 11
+                            },
+                            color: '#1D2B3D',
+                            precision: 0
+                        },
+                        grid: {
+                            color: 'rgba(123, 144, 173, 0.1)'
+                        }
+                    },
+                    x: {
+                        ticks: {
+                            font: {
+                                family: 'Sora',
+                                size: 11
+                            },
+                            color: '#1D2B3D'
+                        },
+                        grid: {
+                            display: false
+                        }
+                    }
+                }
+            }
+        });
+
+    } catch (error) {
+        console.error('Error in initCallStatsChart:', error);
+        if (emptyState) emptyState.style.display = 'flex';
+        if (ctx) ctx.style.display = 'none';
+    }
+}
+
+// Setup event listeners for call stats chart
+function setupCallStatsListeners() {
+    const periodSelect = document.getElementById('statsPeriod');
+    const toggleCalls = document.getElementById('toggleCalls');
+    const togglePickup = document.getElementById('togglePickupRate');
+    const toggleMeeting = document.getElementById('toggleMeetingRate');
+
+    if (periodSelect) {
+        periodSelect.addEventListener('change', initCallStatsChart);
+    }
+
+    if (toggleCalls) {
+        toggleCalls.addEventListener('change', initCallStatsChart);
+    }
+
+    if (togglePickup) {
+        togglePickup.addEventListener('change', initCallStatsChart);
+    }
+
+    if (toggleMeeting) {
+        toggleMeeting.addEventListener('change', initCallStatsChart);
+    }
+}
+
 // Load prospects from Supabase
 async function loadProspects() {
     const section = document.getElementById('prospects');
@@ -886,113 +1396,239 @@ async function loadProspects() {
     }
 }
 
+// Utility functions for formatting
+function capitalizeFirstLetter(str) {
+    if (!str) return '';
+    // Capitalize first letter of each word (for names like "jean-paul" or "marie claire")
+    return str.split(' ').map(word => {
+        if (word.includes('-')) {
+            // Handle hyphenated names like "jean-paul"
+            return word.split('-').map(part => 
+                part.charAt(0).toUpperCase() + part.slice(1)
+            ).join('-');
+        }
+        return word.charAt(0).toUpperCase() + word.slice(1);
+    }).join(' ');
+}
+
+function formatPhoneNumber(phone) {
+    if (!phone) return '-';
+    
+    // Remove all spaces first
+    let cleanPhone = phone.replace(/\s+/g, '');
+    
+    // Check if phone already has formatting (contains spaces, dots, or dashes)
+    if (phone.includes(' ') || phone.includes('.') || phone.includes('-')) {
+        return phone; // Already formatted, return as is
+    }
+    
+    // Add space every 2 characters
+    let formatted = '';
+    for (let i = 0; i < cleanPhone.length; i++) {
+        if (i > 0 && i % 2 === 0) {
+            formatted += ' ';
+        }
+        formatted += cleanPhone[i];
+    }
+    
+    return formatted;
+}
+
 // Display prospects in the table
 function displayProspects(prospects) {
-    const tbody = document.querySelector('#prospects .data-table tbody');
-    if (!tbody) return;
+    const container = document.getElementById('prospectsTableContainer');
+    if (!container) return;
 
-    // Clear existing content
-    tbody.innerHTML = '';
+    // Prepare categories
+    const activeProspects = prospects.filter(p => !p.archived && (p.booked === false || p.booked === 'false' || !p.booked));
+    const bookedProspects = prospects.filter(p => !p.archived && (p.booked === true || p.booked === 'true'));
+    const archivedProspects = prospects.filter(p => p.archived);
 
-    prospects.forEach(prospect => {
-        const row = document.createElement('tr');
-        
-        // Full name with last_name in bold
-        const firstName = prospect.first_name || '';
-        const lastName = prospect.last_name || '';
-        const fullName = firstName && lastName 
-            ? `${firstName} <strong>${lastName}</strong>`
-            : firstName || lastName || 'Non renseigné';
-        
-        // Format phone if available
-        const phone = prospect.phone || '-';
-        
-        // Format email
-        const email = prospect.email || '-';
-        
-        // Format society
-        const society = prospect.society || '-';
-        
-        // Format role
-        const role = prospect.role || '-';
-        
-        // Format LinkedIn - show icon only if LinkedIn exists
-        const linkedin = prospect.linkedin || '';
-        const linkedinIcon = linkedin 
-            ? `<a href="${linkedin}" target="_blank" rel="noopener noreferrer" class="linkedin-link" title="Voir le profil LinkedIn" onclick="event.stopPropagation();">
-                <i data-lucide="external-link"></i>
-            </a>`
-            : '-';
-        
-        // Check if prospect has been called
-        const called = prospect.called === true || prospect.called === 'true';
-        const calledIcon = called 
-            ? '<i data-lucide="phone" class="called-icon called-yes" title="Déjà appelé"></i>' 
-            : '<i data-lucide="phone-off" class="called-icon called-no" title="Pas encore appelé"></i>';
-        
-        // Determine prospect status for border color
-        // Priority: rdv_planifie > contacte > pas_repondu > neutre_repondu
-        // Using prospect.status field or defaulting based on other fields
-        const status = prospect.status || prospect.prospect_status || 'neutre_repondu';
-        let statusClass = '';
-        
-        if (status === 'rdv_planifie' || status === 'rdv' || status === 'planifie') {
-            statusClass = 'prospect-status-green';
-        } else if (status === 'contacte' || status === 'contacted') {
-            statusClass = 'prospect-status-red';
-        } else if (status === 'pas_repondu' || status === 'no_response' || status === 'pas_reponse') {
-            statusClass = 'prospect-status-orange';
-        } else if (status === 'neutre_repondu' || status === 'neutral' || status === 'repondu') {
-            statusClass = 'prospect-status-blue';
-        } else {
-            // Default to blue if status is unknown
-            statusClass = 'prospect-status-blue';
-        }
-
-        row.className = statusClass;
-        row.setAttribute('data-prospect-id', prospect.id);
-        row.style.cursor = 'pointer';
-        row.innerHTML = `
-            <td>
-                <div style="display: flex; align-items: center; gap: 0.5rem;">
-                    ${calledIcon}
-                    <span>${fullName}</span>
-                </div>
-            </td>
-            <td>${society}</td>
-            <td>${phone}</td>
-            <td>${email}</td>
-            <td>${linkedinIcon}</td>
-            <td><span class="status-badge">${role}</span></td>
-            <td>
-                <button class="btn-icon btn-record" title="Enregistrer" data-prospect-id="${prospect.id}">
-                    <i data-lucide="mic"></i>
-                </button>
-                <button class="btn-icon btn-confirm btn-depot" title="Confirmation/Dépôt" data-prospect-id="${prospect.id}">
-                    <i data-lucide="upload"></i>
-                </button>
-                <button class="btn-icon btn-view" title="Voir" data-prospect-id="${prospect.id}">
-                    <i data-lucide="eye"></i>
-                </button>
-                <button class="btn-icon btn-delete" title="Supprimer" data-prospect-id="${prospect.id}" data-prospect-name="${(firstName + ' ' + lastName).trim() || 'ce prospect'}">
-                    <i data-lucide="trash-2"></i>
-                </button>
-            </td>
+    // Helper to render a card with a table
+    const renderCard = (titleHtml, prospectsList, isArchived = false) => {
+        const card = document.createElement('div');
+        card.className = 'prospects-card';
+        card.innerHTML = `
+            <div class="prospects-card-header">${titleHtml}</div>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Nom</th>
+                            <th>Entreprise</th>
+                            <th>Téléphone</th>
+                            <th>Email</th>
+                            <th>LinkedIn</th>
+                            <th>Statut</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
         `;
+        const tbody = card.querySelector('tbody');
+        if (prospectsList.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="empty-table">
+                        <i data-lucide="inbox"></i>
+                        <p>Aucun prospect</p>
+                    </td>
+                </tr>
+            `;
+        } else {
+            prospectsList.forEach(p => {
+                const row = createProspectRow(p, isArchived);
+                tbody.appendChild(row);
+            });
+        }
+        return card;
+    };
 
-        tbody.appendChild(row);
-    });
+    // Clear and render cards (only show non-empty ones)
+    container.innerHTML = '';
+    const activeTitle = `<div class="prospects-card-title"><i data-lucide="users"></i><span>Prospects (${activeProspects.length})</span></div>`;
+    const bookedTitle = `<div class="prospects-card-title booked"><i data-lucide="calendar-check"></i><span>Réservés (${bookedProspects.length})</span></div>`;
+    const archivedTitle = `<div class="prospects-card-title archived"><i data-lucide="archive"></i><span>Archivés (${archivedProspects.length})</span></div>`;
 
-    // Reinitialize Lucide icons
+    // Always show active prospects card
+    container.appendChild(renderCard(activeTitle, activeProspects, false));
+    
+    // Only show booked card if there are booked prospects
+    if (bookedProspects.length > 0) {
+        container.appendChild(renderCard(bookedTitle, bookedProspects, false));
+    }
+    
+    // Only show archived card if there are archived prospects
+    if (archivedProspects.length > 0) {
+        container.appendChild(renderCard(archivedTitle, archivedProspects, true));
+    }
+
+    // Reinitialize icons
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();
     }
 
+    // Attach event listeners to newly created rows/buttons
+    attachProspectRowListeners();
+}
+
+function createProspectRow(prospect, isArchived = false) {
+    const row = document.createElement('tr');
+    
+    // Format names with proper capitalization
+    const firstName = prospect.first_name ? capitalizeFirstLetter(prospect.first_name.toLowerCase()) : '';
+    const lastName = prospect.last_name ? prospect.last_name.toUpperCase() : '';
+    const fullName = firstName && lastName 
+        ? `${firstName} <strong>${lastName}</strong>`
+        : firstName || lastName || 'Non renseigné';
+    
+    // Format phone with spaces every 2 characters if not already formatted
+    const phone = prospect.phone ? formatPhoneNumber(prospect.phone) : '-';
+    
+    // Format email in lowercase
+    const email = prospect.email ? prospect.email.toLowerCase() : '-';
+    
+    // Format society with first letter capitalized
+    const society = prospect.society ? capitalizeFirstLetter(prospect.society.toLowerCase()) : '-';
+    
+    // Format role
+    const role = prospect.role || '-';
+    
+    // Format LinkedIn - show icon only if LinkedIn exists
+    const linkedin = prospect.linkedin || '';
+    const linkedinIcon = linkedin 
+        ? `<a href="${linkedin}" target="_blank" rel="noopener noreferrer" class="linkedin-link" title="Voir le profil LinkedIn" onclick="event.stopPropagation();">
+            <i data-lucide="external-link"></i>
+        </a>`
+        : '-';
+    
+    // Check if prospect has been called
+    const called = prospect.called === true || prospect.called === 'true';
+    const calledIcon = called 
+        ? '<i data-lucide="phone" class="called-icon called-yes" title="Déjà appelé"></i>' 
+        : '<i data-lucide="phone-off" class="called-icon called-no" title="Pas encore appelé"></i>';
+    
+    // Check if RDV is booked
+    const booked = prospect.booked === true || prospect.booked === 'true';
+    const bookedIcon = booked
+        ? '<i data-lucide="video" class="booked-icon booked-yes" title="RDV planifié"></i>'
+        : '';
+    
+    // Determine prospect status for border color
+    const status = prospect.status || prospect.prospect_status || 'neutre_repondu';
+    let statusClass = '';
+    
+    if (status === 'rdv_planifie' || status === 'rdv' || status === 'planifie') {
+        statusClass = 'prospect-status-green';
+    } else if (status === 'contacte' || status === 'contacted') {
+        statusClass = 'prospect-status-red';
+    } else if (status === 'pas_repondu' || status === 'no_response' || status === 'pas_reponse') {
+        statusClass = 'prospect-status-orange';
+    } else if (status === 'neutre_repondu' || status === 'neutral' || status === 'repondu') {
+        statusClass = 'prospect-status-blue';
+    } else {
+        statusClass = 'prospect-status-blue';
+    }
+
+    // Add archived class if prospect is archived
+    if (isArchived) {
+        statusClass += ' prospect-archived';
+    }
+
+    row.className = statusClass;
+    row.setAttribute('data-prospect-id', prospect.id);
+    row.style.cursor = 'pointer';
+    
+    // Show unarchive button for archived prospects, archive button for active ones
+    const archiveButton = isArchived
+        ? `<button class="btn-icon btn-unarchive" title="Désarchiver" data-prospect-id="${prospect.id}">
+            <i data-lucide="archive-restore"></i>
+        </button>`
+        : `<button class="btn-icon btn-archive" title="Archiver" data-prospect-id="${prospect.id}">
+            <i data-lucide="archive"></i>
+        </button>`;
+    
+    row.innerHTML = `
+        <td>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                ${calledIcon}
+                ${bookedIcon}
+                <span>${fullName}</span>
+            </div>
+        </td>
+        <td>${society}</td>
+        <td>${phone}</td>
+        <td>${email}</td>
+        <td>${linkedinIcon}</td>
+        <td><span class="status-badge">${role}</span></td>
+        <td>
+            <button class="btn-icon btn-record" title="Enregistrer" data-prospect-id="${prospect.id}">
+                <i data-lucide="mic"></i>
+            </button>
+            <button class="btn-icon btn-confirm btn-depot" title="Confirmation/Dépôt" data-prospect-id="${prospect.id}">
+                <i data-lucide="upload"></i>
+            </button>
+            <button class="btn-icon btn-invite" title="Envoyer invitation RDV" data-prospect-id="${prospect.id}">
+                <i data-lucide="mail"></i>
+            </button>
+            ${archiveButton}
+            <button class="btn-icon btn-delete" title="Supprimer" data-prospect-id="${prospect.id}" data-prospect-name="${(firstName + ' ' + lastName).trim() || 'ce prospect'}">
+                <i data-lucide="trash-2"></i>
+            </button>
+        </td>
+    `;
+
+    return row;
+}
+
+function attachProspectRowListeners() {
     // Add delete button event listeners
     const deleteButtons = document.querySelectorAll('.btn-delete');
     deleteButtons.forEach(btn => {
         btn.addEventListener('click', (e) => {
-            e.stopPropagation(); // Prevent row click from firing
+            e.stopPropagation();
             const prospectId = parseInt(btn.getAttribute('data-prospect-id'));
             const prospectName = btn.getAttribute('data-prospect-name');
             showDeleteConfirm(prospectId, prospectName);
@@ -1003,7 +1639,7 @@ function displayProspects(prospects) {
     const recordButtons = document.querySelectorAll('.btn-record');
     recordButtons.forEach(btn => {
         btn.addEventListener('click', (e) => {
-            e.stopPropagation(); // Prevent row click from firing
+            e.stopPropagation();
             const prospectId = parseInt(btn.getAttribute('data-prospect-id'));
             showRecordModal(prospectId);
         });
@@ -1013,31 +1649,46 @@ function displayProspects(prospects) {
     const depotButtons = document.querySelectorAll('.btn-depot');
     depotButtons.forEach(btn => {
         btn.addEventListener('click', (e) => {
-            e.stopPropagation(); // Prevent row click from firing
+            e.stopPropagation();
             const prospectId = parseInt(btn.getAttribute('data-prospect-id'));
             showDepotModal(prospectId);
         });
     });
 
-    // Add view button event listeners
-    const viewButtons = document.querySelectorAll('.btn-view');
-    viewButtons.forEach(btn => {
+    // Add invite button event listeners
+    const inviteButtons = document.querySelectorAll('.btn-invite');
+    inviteButtons.forEach(btn => {
         btn.addEventListener('click', (e) => {
-            e.stopPropagation(); // Prevent row click from firing
+            e.stopPropagation();
             const prospectId = parseInt(btn.getAttribute('data-prospect-id'));
-            showProspectDetails(prospectId);
+            showInviteModal(prospectId);
         });
     });
     
-    // Add click event listener to rows (open details on row click)
-    const prospectRows = tbody.querySelectorAll('tr[data-prospect-id]');
-    prospectRows.forEach(row => {
+    // Add archive button event listeners
+    const archiveButtons = document.querySelectorAll('.btn-archive');
+    archiveButtons.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const prospectId = parseInt(btn.getAttribute('data-prospect-id'));
+            archiveProspect(prospectId);
+        });
+    });
+    
+    // Add unarchive button event listeners
+    const unarchiveButtons = document.querySelectorAll('.btn-unarchive');
+    unarchiveButtons.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const prospectId = parseInt(btn.getAttribute('data-prospect-id'));
+            unarchiveProspect(prospectId);
+        });
+    });
+
+    // Add row click event listeners
+    const rows = document.querySelectorAll('#prospects .data-table tbody tr:not(.archived-section-header)');
+    rows.forEach(row => {
         row.addEventListener('click', (e) => {
-            // Don't open details if clicking on a button
-            if (e.target.closest('.btn-icon')) {
-                return;
-            }
-            
             const prospectId = parseInt(row.getAttribute('data-prospect-id'));
             if (prospectId) {
                 showProspectDetails(prospectId);
@@ -1048,19 +1699,14 @@ function displayProspects(prospects) {
 
 // Display empty state
 function displayProspectsEmpty(customMessage) {
-    const tbody = document.querySelector('#prospects .data-table tbody');
-    if (!tbody) return;
-
-    tbody.innerHTML = `
-        <tr>
-            <td colspan="6" class="empty-table">
-                <i data-lucide="inbox"></i>
-                <p>${customMessage || 'Aucun prospect pour le moment'}</p>
-            </td>
-        </tr>
+    const container = document.getElementById('prospectsTableContainer');
+    if (!container) return;
+    container.innerHTML = `
+        <div class="empty-state">
+            <i data-lucide="inbox"></i>
+            <p>${customMessage || 'Aucun prospect pour le moment'}</p>
+        </div>
     `;
-
-    // Reinitialize Lucide icons
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();
     }
@@ -1068,19 +1714,14 @@ function displayProspectsEmpty(customMessage) {
 
 // Display error state
 function displayProspectsError(message) {
-    const tbody = document.querySelector('#prospects .data-table tbody');
-    if (!tbody) return;
-
-    tbody.innerHTML = `
-        <tr>
-            <td colspan="6" class="empty-table">
-                <i data-lucide="alert-circle"></i>
-                <p>${message}</p>
-            </td>
-        </tr>
+    const container = document.getElementById('prospectsTableContainer');
+    if (!container) return;
+    container.innerHTML = `
+        <div class="empty-state">
+            <i data-lucide="alert-circle"></i>
+            <p>${message}</p>
+        </div>
     `;
-
-    // Reinitialize Lucide icons
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();
     }
@@ -1143,6 +1784,64 @@ async function deleteProspect(prospectId) {
     }
 }
 
+// Archive prospect
+async function archiveProspect(prospectId) {
+    try {
+        if (typeof window.supabaseClient === 'undefined') {
+            console.error('Supabase client not available');
+            return;
+        }
+
+        const { error } = await window.supabaseClient
+            .from('crm_prospects')
+            .update({ archived: true })
+            .eq('id', prospectId);
+
+        if (error) {
+            console.error('Error archiving prospect:', error);
+            showToast('Erreur lors de l\'archivage', 'error');
+            return;
+        }
+
+        showToast('Prospect archivé', 'success');
+        
+        // Reload prospects
+        loadProspects();
+    } catch (error) {
+        console.error('Error in archiveProspect:', error);
+        showToast('Une erreur est survenue', 'error');
+    }
+}
+
+// Unarchive prospect
+async function unarchiveProspect(prospectId) {
+    try {
+        if (typeof window.supabaseClient === 'undefined') {
+            console.error('Supabase client not available');
+            return;
+        }
+
+        const { error } = await window.supabaseClient
+            .from('crm_prospects')
+            .update({ archived: false })
+            .eq('id', prospectId);
+
+        if (error) {
+            console.error('Error unarchiving prospect:', error);
+            showToast('Erreur lors de la désarchivation', 'error');
+            return;
+        }
+
+        showToast('Prospect désarchivé', 'success');
+        
+        // Reload prospects
+        loadProspects();
+    } catch (error) {
+        console.error('Error in unarchiveProspect:', error);
+        showToast('Une erreur est survenue', 'error');
+    }
+}
+
 // Record modal variables
 let currentRecordProspectId = null;
 let mediaRecorder = null;
@@ -1153,6 +1852,7 @@ let currentRecording = null;
 let audioContext = null;
 let analyser = null;
 let waveformInterval = null;
+let currentStream = null; // Add stream to global scope
 
 // Initialize waveform
 function initWaveform() {
@@ -1285,23 +1985,22 @@ function hideRecordModal() {
 async function startRecording() {
     try {
         const source = document.querySelector('input[name="recordSource"]:checked').value;
-        let stream;
         
         if (source === 'microphone') {
             // Request microphone access
-            stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            currentStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         } else {
             // System audio capture (screen capture with audio)
             // Note: This requires user to share screen with audio
             try {
-                stream = await navigator.mediaDevices.getDisplayMedia({ 
+                currentStream = await navigator.mediaDevices.getDisplayMedia({ 
                     video: false, 
                     audio: true 
                 });
             } catch (error) {
                 // Fallback to microphone if system audio not available
                 console.warn('System audio not available, falling back to microphone');
-                stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                currentStream = await navigator.mediaDevices.getUserMedia({ audio: true });
             }
         }
         
@@ -1309,19 +2008,40 @@ async function startRecording() {
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
         analyser = audioContext.createAnalyser();
         analyser.fftSize = 256;
-        const audioSource = audioContext.createMediaStreamSource(stream);
+        const audioSource = audioContext.createMediaStreamSource(currentStream);
         audioSource.connect(analyser);
         
-        // Initialize MediaRecorder
-        const options = { mimeType: 'audio/webm' };
-        if (!MediaRecorder.isTypeSupported('audio/webm')) {
+        // Initialize MediaRecorder with API-compatible formats
+        // Priority: audio/mp4 (M4A) > audio/mpeg (MP3) > audio/wav > audio/webm (fallback)
+        let options = {};
+        
+        // Try M4A first (best quality and compatibility with API)
+        if (MediaRecorder.isTypeSupported('audio/mp4')) {
             options.mimeType = 'audio/mp4';
         }
-        if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+        // Try MP3 (widely supported)
+        else if (MediaRecorder.isTypeSupported('audio/mpeg')) {
+            options.mimeType = 'audio/mpeg';
+        }
+        // Try WAV (lossless but large file size)
+        else if (MediaRecorder.isTypeSupported('audio/wav')) {
             options.mimeType = 'audio/wav';
         }
+        // Try WebM with Opus codec as fallback
+        else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+            options.mimeType = 'audio/webm;codecs=opus';
+        }
+        // Last resort: WebM without codec specification
+        else if (MediaRecorder.isTypeSupported('audio/webm')) {
+            options.mimeType = 'audio/webm';
+        }
+        else {
+            throw new Error('Aucun format audio supporté par votre navigateur');
+        }
         
-        mediaRecorder = new MediaRecorder(stream, options);
+        console.log('Recording with MIME type:', options.mimeType);
+        
+        mediaRecorder = new MediaRecorder(currentStream, options);
         audioChunks = [];
         
         mediaRecorder.ondataavailable = (event) => {
@@ -1370,19 +2090,38 @@ async function startRecording() {
                 prospectRecordings.push(recordingId);
                 localStorage.setItem(`prospect_${currentRecordProspectId}_recordings`, JSON.stringify(prospectRecordings));
                 
-                // Hide record modal
+                // Check if format is compatible with API
+                const mimeType = mediaRecorder.mimeType;
+                const isApiCompatible = mimeType.includes('audio/mp4') || 
+                                       mimeType.includes('audio/mpeg') || 
+                                       mimeType.includes('audio/mp3') || 
+                                       mimeType.includes('audio/wav') || 
+                                       mimeType.includes('audio/x-m4a');
+                
+                if (!isApiCompatible) {
+                    console.warn('Recording format not directly compatible with API:', mimeType);
+                    showToast('Format d\'enregistrement non optimal. Le fichier pourrait nécessiter une conversion.', 'warning');
+                }
+                
+                // Hide record modal first
                 hideRecordModal();
                 
                 // Open depot modal with recording option (pass data with blob for immediate use)
-                openDepotWithRecording(currentRecordProspectId, {
-                    ...recordingData,
-                    base64: base64data
-                });
+                // Use setTimeout to ensure modal is fully hidden before showing depot modal
+                setTimeout(() => {
+                    openDepotWithRecording(currentRecordProspectId, {
+                        ...recordingData,
+                        base64: base64data
+                    });
+                }, 200);
             };
             reader.readAsDataURL(audioBlob);
             
             // Stop all tracks
-            stream.getTracks().forEach(track => track.stop());
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+                currentStream = null;
+            }
         };
         
         // Start recording
@@ -1407,10 +2146,34 @@ async function startRecording() {
 
 // Stop recording
 function stopRecording() {
-    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    console.log('Stop recording called');
+    console.log('MediaRecorder exists:', !!mediaRecorder);
+    console.log('MediaRecorder state:', mediaRecorder ? mediaRecorder.state : 'no mediaRecorder');
+    
+    if (!mediaRecorder) {
+        console.error('No mediaRecorder available');
+        alert('Erreur: Aucun enregistrement en cours');
+        return;
+    }
+    
+    if (mediaRecorder.state === 'recording' || mediaRecorder.state === 'paused') {
+        console.log('Stopping recording...');
+        
+        // Stop the MediaRecorder - this will trigger onstop event
         mediaRecorder.stop();
+        
+        // Stop timer and waveform
         stopRecordTimer();
         stopWaveform();
+        
+        // Update UI immediately
+        document.getElementById('startRecordBtn').style.display = 'flex';
+        document.getElementById('stopRecordBtn').style.display = 'none';
+        
+        console.log('Recording stopped, waiting for onstop event...');
+    } else {
+        console.warn('MediaRecorder is not recording:', mediaRecorder.state);
+        alert('L\'enregistrement n\'est pas en cours');
     }
 }
 
@@ -1558,9 +2321,23 @@ function useRecordingForDepot(recordingData) {
         return;
     }
     
-    // Create a File object from the blob
+    // Create a File object from the blob with proper extension
     const mimeType = recordingData.mimeType || 'audio/webm';
-    const extension = mimeType.split('/')[1] || 'webm';
+    
+    // Map MIME types to proper file extensions
+    let extension = 'webm'; // default fallback
+    if (mimeType.includes('audio/mp4') || mimeType.includes('audio/x-m4a')) {
+        extension = 'm4a';
+    } else if (mimeType.includes('audio/mpeg') || mimeType.includes('audio/mp3')) {
+        extension = 'mp3';
+    } else if (mimeType.includes('audio/wav') || mimeType.includes('audio/x-wav')) {
+        extension = 'wav';
+    } else if (mimeType.includes('audio/webm')) {
+        extension = 'webm';
+    } else if (mimeType.includes('audio/ogg')) {
+        extension = 'ogg';
+    }
+    
     const fileName = `recording_${currentRecordProspectId}_${Date.now()}.${extension}`;
     const file = new File([blob], fileName, { type: mimeType });
     
@@ -1697,6 +2474,191 @@ function hideDepotModal() {
     }
 }
 
+// ===== INVITE MODAL =====
+
+let currentInviteProspectId = null;
+
+// Show invite modal
+function showInviteModal(prospectId) {
+    currentInviteProspectId = prospectId;
+    const modal = document.getElementById('inviteModal');
+    
+    // Reset form
+    document.getElementById('inviteSubject').value = 'Appel de découverte';
+    document.getElementById('inviteDuration').value = '30';
+    
+    // Set presentation as default
+    const presentationRadio = document.querySelector('input[name="inviteType"][value="presentation"]');
+    if (presentationRadio) {
+        presentationRadio.checked = true;
+    }
+    
+    // Set current date and time + 1 day (format: YYYY-MM-DDTHH:mm)
+    const now = new Date();
+    now.setDate(now.getDate() + 1); // Tomorrow
+    now.setHours(10, 0, 0, 0); // 10:00 AM
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const dateTimeValue = `${year}-${month}-${day}T${hours}:${minutes}`;
+    document.getElementById('inviteDate').value = dateTimeValue;
+    
+    // Show/hide fields based on selection
+    updateInviteFormFields();
+    
+    // Add event listeners for invite type radio buttons
+    const inviteTypeRadios = document.querySelectorAll('input[name="inviteType"]');
+    inviteTypeRadios.forEach(radio => {
+        radio.addEventListener('change', updateInviteFormFields);
+    });
+    
+    modal.classList.add('active');
+    
+    // Reinitialize icons
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+}
+
+// Update form fields based on invite type selection
+function updateInviteFormFields() {
+    const selectedType = document.querySelector('input[name="inviteType"]:checked')?.value;
+    const dateGroup = document.getElementById('inviteDateGroup');
+    const durationGroup = document.getElementById('inviteDurationGroup');
+    
+    if (selectedType === 'presentation') {
+        // For presentation, hide date and duration fields
+        if (dateGroup) dateGroup.style.display = 'none';
+        if (durationGroup) durationGroup.style.display = 'none';
+    } else {
+        // For teams invitation, show date and duration fields
+        if (dateGroup) dateGroup.style.display = 'block';
+        if (durationGroup) durationGroup.style.display = 'block';
+    }
+}
+
+// Hide invite modal
+function hideInviteModal() {
+    const modal = document.getElementById('inviteModal');
+    modal.classList.remove('active');
+    currentInviteProspectId = null;
+}
+
+// Confirm invite
+async function confirmInvite() {
+    const inviteType = document.querySelector('input[name="inviteType"]:checked')?.value;
+    const subject = document.getElementById('inviteSubject').value.trim();
+    
+    if (!inviteType) {
+        showToast('Veuillez sélectionner un type d\'invitation', 'error');
+        return;
+    }
+    
+    if (!subject) {
+        showToast('Veuillez remplir le sujet', 'error');
+        return;
+    }
+    
+    // For Teams invitation, check date and duration
+    if (inviteType === 'teams') {
+        const dateTime = document.getElementById('inviteDate').value;
+        const duration = parseInt(document.getElementById('inviteDuration').value);
+        
+        if (!dateTime || !duration) {
+            showToast('Veuillez remplir la date et la durée', 'error');
+            return;
+        }
+    }
+    
+    if (!window.currentUserId) {
+        showToast('Erreur : ID utilisateur non disponible', 'error');
+        return;
+    }
+    
+    // Disable button during request
+    const confirmBtn = document.getElementById('confirmInvite');
+    confirmBtn.disabled = true;
+    const originalText = confirmBtn.textContent;
+    confirmBtn.textContent = 'Envoi...';
+    
+    try {
+        let endpoint, payload;
+        
+        if (inviteType === 'presentation') {
+            // For presentation, use presentation endpoint with minimal data
+            endpoint = 'https://host.taskalys.app/webhook-test/presentation';
+            payload = {
+                user_id: window.currentUserId,
+                prospect_id: currentInviteProspectId,
+                subject: subject
+            };
+        } else {
+            // For Teams invitation, use invite endpoint with scheduling data
+            const dateTime = document.getElementById('inviteDate').value;
+            const duration = parseInt(document.getElementById('inviteDuration').value);
+            
+            endpoint = 'https://host.taskalys.app/webhook-test/invite';
+            payload = {
+                user_id: window.currentUserId,
+                prospect_id: currentInviteProspectId,
+                subject: subject,
+                date_time: dateTime,
+                duration: duration
+            };
+        }
+        
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP ${response.status} - ${errorText}`);
+        }
+        
+        const successMessage = inviteType === 'presentation' 
+            ? 'Présentation envoyée avec succès' 
+            : 'Invitation Teams envoyée avec succès';
+        showToast(successMessage, 'success');
+        hideInviteModal();
+        
+    } catch (error) {
+        console.error('Error sending invite:', error);
+        const errorMessage = inviteType === 'presentation'
+            ? 'Erreur lors de l\'envoi de la présentation'
+            : 'Erreur lors de l\'envoi de l\'invitation';
+        showToast(errorMessage, 'error');
+    } finally {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = originalText;
+    }
+}
+
+// Setup invite modal event listeners
+document.addEventListener('DOMContentLoaded', () => {
+    const closeInviteModal = document.getElementById('closeInviteModal');
+    const cancelInvite = document.getElementById('cancelInvite');
+    const confirmInviteBtn = document.getElementById('confirmInvite');
+    
+    if (closeInviteModal) {
+        closeInviteModal.addEventListener('click', hideInviteModal);
+    }
+    
+    if (cancelInvite) {
+        cancelInvite.addEventListener('click', hideInviteModal);
+    }
+    
+    if (confirmInviteBtn) {
+        confirmInviteBtn.addEventListener('click', confirmInvite);
+    }
+});
+
 // Confirm depot
 async function confirmDepot() {
     const selectedStatus = document.querySelector('input[name="depotStatus"]:checked').value;
@@ -1727,10 +2689,11 @@ async function confirmDepot() {
     };
     const depositType = depositTypeMap[selectedStatus] || selectedStatus;
     
-    // Validate required fields - try to get prospect ID from currentDepotId or modal backup
+    // Validate required fields - try multiple sources for prospect ID
     let prospectId = currentDepotId;
+    
+    // Fallback 1: Try to get from modal data attribute
     if (!prospectId) {
-        // Try to get from modal data attribute as backup
         const modal = document.getElementById('depotModal');
         if (modal) {
             const modalProspectId = modal.getAttribute('data-prospect-id');
@@ -1740,9 +2703,25 @@ async function confirmDepot() {
         }
     }
     
+    // Fallback 2: Try to get from currentViewProspectId (if opened from details modal)
+    if (!prospectId && typeof currentViewProspectId !== 'undefined' && currentViewProspectId) {
+        prospectId = currentViewProspectId;
+    }
+    
+    // Fallback 3: Try to get from currentRecordProspectId (if opened from recording)
+    if (!prospectId && typeof currentRecordProspectId !== 'undefined' && currentRecordProspectId) {
+        prospectId = currentRecordProspectId;
+    }
+    
     if (!prospectId || isNaN(prospectId)) {
+        console.error('DEBUG - Prospect ID sources:', {
+            currentDepotId: currentDepotId,
+            currentViewProspectId: typeof currentViewProspectId !== 'undefined' ? currentViewProspectId : 'undefined',
+            currentRecordProspectId: typeof currentRecordProspectId !== 'undefined' ? currentRecordProspectId : 'undefined',
+            modalAttribute: document.getElementById('depotModal')?.getAttribute('data-prospect-id'),
+            finalProspectId: prospectId
+        });
         alert('Erreur : ID prospect manquant');
-        console.error('currentDepotId:', currentDepotId, 'prospectId:', prospectId);
         return;
     }
     
@@ -1810,7 +2789,7 @@ async function confirmDepot() {
     hideDepotModal();
     
         // Show success message
-    alert('Dépôt enregistré avec succès');
+        showToast('Dépôt enregistré avec succès');
     } catch (error) {
         console.error('Error sending depot:', error);
         alert('Erreur lors de l\'envoi du dépôt : ' + error.message);
@@ -1861,16 +2840,18 @@ function showProspectDetails(prospectId) {
         if (depotDetailBtn) {
             depotDetailBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
+                const btnProspectId = parseInt(depotDetailBtn.getAttribute('data-prospect-id'));
+                showDepotModal(btnProspectId); // Pass ID before hiding details
                 hideProspectDetails();
-                showDepotModal(prospectId);
             });
         }
         
         if (recordDetailBtn) {
             recordDetailBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
+                const btnProspectId = parseInt(recordDetailBtn.getAttribute('data-prospect-id'));
+                showRecordModal(btnProspectId); // Pass ID before hiding details
                 hideProspectDetails();
-                showRecordModal(prospectId);
             });
         }
     }
@@ -2132,13 +3113,13 @@ function fillProspectNote(prospect) {
 // Fill prospect summary
 function fillProspectSummary(prospect) {
     const summary = document.getElementById('prospectSummary');
-    const notes = prospect.notes || '';
+    const resume = prospect.resume || '';
     const prospectId = prospect.id;
     
-    if (notes) {
-        summary.innerHTML = `<p class="editable-text" data-field="notes" data-prospect-id="${prospectId}" contenteditable="false">${notes}</p>`;
+    if (resume) {
+        summary.innerHTML = `<p class="editable-text" data-field="resume" data-prospect-id="${prospectId}" contenteditable="false">${resume}</p>`;
     } else {
-        summary.innerHTML = `<p class="editable-text prospect-summary-placeholder" data-field="notes" data-prospect-id="${prospectId}" contenteditable="false">Aucun résumé disponible pour le moment.</p>`;
+        summary.innerHTML = `<p class="editable-text prospect-summary-placeholder" data-field="resume" data-prospect-id="${prospectId}" contenteditable="false">Aucun résumé disponible pour le moment.</p>`;
     }
     
     // Add edit functionality to summary
@@ -2212,8 +3193,13 @@ function fillProspectSummary(prospect) {
 function fillProspectActivities(prospect) {
     const activities = document.getElementById('prospectActivities');
     const prospectId = prospect.id;
-    // Placeholder - à remplir avec les données réelles plus tard
-    activities.innerHTML = `<p class="editable-text prospect-activities-placeholder" data-field="activities" data-prospect-id="${prospectId}" contenteditable="false">Aucune activité renseignée pour le moment.</p>`;
+    const activitiesText = prospect.activities || '';
+    
+    if (activitiesText) {
+        activities.innerHTML = `<p class="editable-text" data-field="activities" data-prospect-id="${prospectId}" contenteditable="false">${activitiesText}</p>`;
+    } else {
+        activities.innerHTML = `<p class="editable-text prospect-activities-placeholder" data-field="activities" data-prospect-id="${prospectId}" contenteditable="false">Aucune activité renseignée pour le moment.</p>`;
+    }
     
     // Add edit functionality to activities
     const editableText = activities.querySelector('.editable-text');
@@ -2240,14 +3226,19 @@ function fillProspectActivities(prospect) {
                 
                 const newValue = editableText.textContent.trim();
                 
-                // If value changed, update in Supabase (if activities field exists)
+                // If value changed, update in Supabase
                 if (newValue !== originalValue && newValue !== 'Aucune activité renseignée pour le moment.') {
                     const fieldName = editableText.getAttribute('data-field');
                     const prospectId = editableText.getAttribute('data-prospect-id');
                     
-                    // Note: activities field might not exist in database, so we'll use notes or create a custom field
-                    // For now, we'll skip the update if field doesn't exist
-                    // await updateProspectField(prospectId, fieldName, newValue);
+                    // Update in Supabase
+                    await updateProspectField(prospectId, fieldName, newValue);
+                    
+                    // Update local data
+                    const prospect = allProspects.find(p => p.id == prospectId);
+                    if (prospect) {
+                        prospect[fieldName] = newValue;
+                    }
                 } else if (!newValue || newValue === 'Aucune activité renseignée pour le moment.') {
                     editableText.textContent = 'Aucune activité renseignée pour le moment.';
                     editableText.classList.add('prospect-activities-placeholder');
@@ -2312,6 +3303,9 @@ async function updateProspectField(prospectId, fieldName, newValue) {
         }
         
         console.log('Field updated successfully:', { fieldName, newValue });
+        
+        // Show subtle success message
+        showToast('Modification enregistrée');
         
         // Reload prospects list to sync
         loadProspects();
@@ -2615,9 +3609,105 @@ function showAddProspectModal() {
     
     modal.classList.add('active');
     
+    // Initialize company autocomplete
+    initializeCompanyAutocomplete();
+    
     // Reinitialize icons
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();
+    }
+}
+
+// Initialize company autocomplete functionality
+function initializeCompanyAutocomplete() {
+    const societyInput = document.getElementById('prospectSociety');
+    const dropdown = document.getElementById('companyAutocompleteDropdown');
+    
+    if (!societyInput || !dropdown) return;
+    
+    // Get unique companies from existing prospects
+    const companies = [...new Set(allProspects
+        .filter(p => p.society && p.society.trim() !== '')
+        .map(p => p.society.trim())
+    )].sort();
+    
+    let activeIndex = -1;
+    
+    // Input event listener
+    societyInput.addEventListener('input', (e) => {
+        const value = e.target.value.toLowerCase().trim();
+        
+        if (value.length === 0) {
+            dropdown.style.display = 'none';
+            return;
+        }
+        
+        // Filter companies
+        const filtered = companies.filter(company => 
+            company.toLowerCase().includes(value)
+        );
+        
+        if (filtered.length === 0) {
+            dropdown.style.display = 'none';
+            return;
+        }
+        
+        // Display dropdown
+        dropdown.innerHTML = filtered.map(company => 
+            `<div class="company-autocomplete-item">${company}</div>`
+        ).join('');
+        
+        dropdown.style.display = 'block';
+        activeIndex = -1;
+        
+        // Add click listeners
+        dropdown.querySelectorAll('.company-autocomplete-item').forEach((item, index) => {
+            item.addEventListener('click', () => {
+                societyInput.value = item.textContent;
+                dropdown.style.display = 'none';
+            });
+        });
+    });
+    
+    // Keyboard navigation
+    societyInput.addEventListener('keydown', (e) => {
+        const items = dropdown.querySelectorAll('.company-autocomplete-item');
+        
+        if (dropdown.style.display === 'none' || items.length === 0) return;
+        
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            activeIndex = (activeIndex + 1) % items.length;
+            updateActiveItem(items, activeIndex);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            activeIndex = activeIndex <= 0 ? items.length - 1 : activeIndex - 1;
+            updateActiveItem(items, activeIndex);
+        } else if (e.key === 'Enter' && activeIndex >= 0) {
+            e.preventDefault();
+            items[activeIndex].click();
+        } else if (e.key === 'Escape') {
+            dropdown.style.display = 'none';
+        }
+    });
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!societyInput.contains(e.target) && !dropdown.contains(e.target)) {
+            dropdown.style.display = 'none';
+        }
+    });
+    
+    // Helper function to update active item
+    function updateActiveItem(items, index) {
+        items.forEach((item, i) => {
+            if (i === index) {
+                item.classList.add('active');
+                item.scrollIntoView({ block: 'nearest' });
+            } else {
+                item.classList.remove('active');
+            }
+        });
     }
 }
 
@@ -2772,7 +3862,7 @@ async function submitAddProspect() {
             loadProspects();
             
             // Show success message
-            alert('Prospect ajouté avec succès !');
+            showToast('Prospect ajouté avec succès !');
         } catch (error) {
             console.error('Error in submitAddProspect:', error);
             alert('Une erreur est survenue lors de l\'ajout du prospect');
@@ -2850,7 +3940,7 @@ async function submitAddProspect() {
             
             hideAddProspectModal();
             loadProspects();
-            alert('Prospect ajouté avec succès !');
+            showToast('Prospect ajouté avec succès !');
         } catch (error) {
             console.error('Error in submitAddProspect:', error);
             alert('Une erreur est survenue lors de l\'ajout du prospect');
@@ -2866,12 +3956,16 @@ function applyProspectsFilters() {
     const activeFilters = [];
     const filterCalled = document.getElementById('filterCalled');
     const filterNotCalled = document.getElementById('filterNotCalled');
+    const filterBooked = document.getElementById('filterBooked');
     
     if (filterCalled?.classList.contains('active')) {
         activeFilters.push('called');
     }
     if (filterNotCalled?.classList.contains('active')) {
         activeFilters.push('not_called');
+    }
+    if (filterBooked?.classList.contains('active')) {
+        activeFilters.push('booked');
     }
     
     let filtered = [...allProspects];
@@ -2881,14 +3975,28 @@ function applyProspectsFilters() {
     if (activeFilters.length > 0) {
         const shouldShowCalled = activeFilters.includes('called');
         const shouldShowNotCalled = activeFilters.includes('not_called');
+        const shouldShowBooked = activeFilters.includes('booked');
         
-        if (shouldShowCalled && shouldShowNotCalled) {
-            // Both selected, show all
-            filtered = [...allProspects];
-        } else if (shouldShowCalled) {
-            filtered = filtered.filter(prospect => prospect.called === true || prospect.called === 'true');
-        } else if (shouldShowNotCalled) {
-            filtered = filtered.filter(prospect => !prospect.called || prospect.called === false || prospect.called === 'false');
+        // If multiple filters are active, combine with OR logic
+        if (activeFilters.length > 1) {
+            filtered = filtered.filter(prospect => {
+                const isCalled = prospect.called === true || prospect.called === 'true';
+                const isNotCalled = !prospect.called || prospect.called === false || prospect.called === 'false';
+                const isBooked = prospect.booked === true || prospect.booked === 'true';
+                
+                return (shouldShowCalled && isCalled) ||
+                       (shouldShowNotCalled && isNotCalled) ||
+                       (shouldShowBooked && isBooked);
+            });
+        } else {
+            // Single filter active
+            if (shouldShowCalled) {
+                filtered = filtered.filter(prospect => prospect.called === true || prospect.called === 'true');
+            } else if (shouldShowNotCalled) {
+                filtered = filtered.filter(prospect => !prospect.called || prospect.called === false || prospect.called === 'false');
+            } else if (shouldShowBooked) {
+                filtered = filtered.filter(prospect => prospect.booked === true || prospect.booked === 'true');
+            }
         }
     }
     
@@ -3458,6 +4566,16 @@ function renderWeekView() {
         dayNumber.className = 'day-number';
         dayNumber.textContent = day.getDate();
         
+        // Calculate days difference and add indicator
+        const diffTime = dayDate - today;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        if (diffDays > 0) {
+            const daysIndicator = document.createElement('span');
+            daysIndicator.className = 'rappels-days-indicator';
+            daysIndicator.innerHTML = `➔ ${diffDays}j`;
+            dayHeader.appendChild(daysIndicator);
+        }
+        
         dayHeader.appendChild(dayName);
         dayHeader.appendChild(dayNumber);
         
@@ -3546,6 +4664,17 @@ function renderMonthView() {
         const dayNumber = document.createElement('div');
         dayNumber.className = 'day-number';
         dayNumber.textContent = day;
+        
+        // Calculate days difference and add indicator (inline with day number)
+        const diffTime = dayDateOnly - today;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        if (diffDays > 0) {
+            const daysIndicator = document.createElement('span');
+            daysIndicator.className = 'rappels-days-indicator-small';
+            daysIndicator.innerHTML = `➔ ${diffDays}j`;
+            dayNumber.appendChild(daysIndicator);
+        }
+        
         dayEl.appendChild(dayNumber);
         
         const eventsContainer = document.createElement('div');
@@ -3722,7 +4851,7 @@ if (logoutBtn) {
             }
         }
         // Redirect to login page
-        window.location.href = 'index.html?logout=true';
+        window.location.href = '/?logout=true';
     });
 }
 
@@ -3784,6 +4913,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Filter tags event listeners
     const filterCalled = document.getElementById('filterCalled');
     const filterNotCalled = document.getElementById('filterNotCalled');
+    const filterBooked = document.getElementById('filterBooked');
     
     if (filterCalled) {
         filterCalled.addEventListener('click', () => toggleFilterTag(filterCalled));
@@ -3791,6 +4921,56 @@ document.addEventListener('DOMContentLoaded', () => {
     
     if (filterNotCalled) {
         filterNotCalled.addEventListener('click', () => toggleFilterTag(filterNotCalled));
+    }
+    
+    if (filterBooked) {
+        filterBooked.addEventListener('click', () => toggleFilterTag(filterBooked));
+    }
+
+    // Historique search and filter event listeners
+    const historiqueSearchInput = document.getElementById('historiqueSearch');
+    if (historiqueSearchInput) {
+        historiqueSearchInput.addEventListener('input', (e) => {
+            historiqueSearchQuery = e.target.value;
+            applyHistoriqueFilters();
+        });
+    }
+
+    const historiqueFilterAll = document.getElementById('historiqueFilterAll');
+    const historiqueFilterAnswered = document.getElementById('historiqueFilterAnswered');
+    const historiqueFilterNoAnswer = document.getElementById('historiqueFilterNoAnswer');
+    const historiqueFilterConverted = document.getElementById('historiqueFilterConverted');
+
+    if (historiqueFilterAll) {
+        historiqueFilterAll.addEventListener('click', () => {
+            historiqueCurrentFilter = 'all';
+            updateHistoriqueFilterButtons();
+            applyHistoriqueFilters();
+        });
+    }
+
+    if (historiqueFilterAnswered) {
+        historiqueFilterAnswered.addEventListener('click', () => {
+            historiqueCurrentFilter = 'answered';
+            updateHistoriqueFilterButtons();
+            applyHistoriqueFilters();
+        });
+    }
+
+    if (historiqueFilterNoAnswer) {
+        historiqueFilterNoAnswer.addEventListener('click', () => {
+            historiqueCurrentFilter = 'no_answer';
+            updateHistoriqueFilterButtons();
+            applyHistoriqueFilters();
+        });
+    }
+
+    if (historiqueFilterConverted) {
+        historiqueFilterConverted.addEventListener('click', () => {
+            historiqueCurrentFilter = 'converted';
+            updateHistoriqueFilterButtons();
+            applyHistoriqueFilters();
+        });
     }
 
     // Modal event listeners
@@ -3897,22 +5077,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        // Validate audio file format
+        // Validate audio file format (API accepts only WAV, MP3, and M4A)
         function isValidAudioFile(file) {
-            const allowedExtensions = ['.wav', '.mp3', '.aiff', '.aac', '.ogg', '.flac', '.m4a'];
+            const allowedExtensions = ['.wav', '.mp3', '.m4a'];
             const allowedMimeTypes = [
                 'audio/wav',
                 'audio/x-wav',
                 'audio/mpeg',
                 'audio/mp3',
-                'audio/x-aiff',
-                'audio/aiff',
-                'audio/aac',
-                'audio/x-aac',
-                'audio/ogg',
-                'audio/vorbis',
-                'audio/flac',
-                'audio/x-flac',
                 'audio/mp4',
                 'audio/x-m4a',
                 'audio/m4a'
@@ -3934,7 +5106,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (file) {
                 // Validate file format
                 if (!isValidAudioFile(file)) {
-                    alert('Format de fichier non accepté. Veuillez sélectionner un fichier audio au format WAV, MP3, AIFF, AAC, OGG Vorbis, FLAC ou M4A.');
+                    alert('Format de fichier non accepté. Veuillez sélectionner un fichier audio au format WAV, MP3 ou M4A uniquement.');
                     depotFileInput.value = '';
                     const uploadText = depotUploadZone.querySelector('.depot-upload-text');
                     if (uploadText) {
@@ -4039,7 +5211,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (stopRecordBtn) {
-        stopRecordBtn.addEventListener('click', stopRecording);
+        stopRecordBtn.addEventListener('click', () => {
+            console.log('Stop button clicked');
+            stopRecording();
+        });
     }
 
     // Source dropdown toggle
@@ -4078,13 +5253,1006 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-// Load calendar when disponibilités section is shown
-const disponibilitesLink = document.querySelector('[data-section="disponibilites"]');
-if (disponibilitesLink) {
-    disponibilitesLink.addEventListener('click', () => {
-        // Load immediately, loading spinner is already shown in nav click handler
-        loadDisponibilites();
+// ===== RAPPELS CALENDAR FUNCTIONALITY =====
+
+// State variables for Rappels calendar
+let rappelsCurrentDate = new Date();
+let rappelsEvents = [];
+
+// Load events from database
+async function loadRappelsEvents() {
+    if (!window.supabaseClient || !window.currentUserId) {
+        console.error('Supabase client or user ID not available');
+        return [];
+    }
+
+    try {
+        const { data, error } = await window.supabaseClient
+            .from('crm_calendars')
+            .select('*')
+            .eq('user_id', window.currentUserId)
+            .order('start', { ascending: true });
+
+        if (error) {
+            console.error('Error loading rappels events:', error);
+            return [];
+        }
+
+        rappelsEvents = data || [];
+        return rappelsEvents;
+    } catch (error) {
+        console.error('Error in loadRappelsEvents:', error);
+        return [];
+    }
+}
+
+// Add new event to database
+async function addRappelsEvent(eventData) {
+    if (!window.supabaseClient || !window.currentUserId) {
+        console.error('Supabase client or user ID not available');
+        alert('Erreur: Client Supabase ou ID utilisateur non disponible');
+        return null;
+    }
+
+    try {
+        // Prepare payload with hours field and linked prospect
+        const payload = {
+            user_id: window.currentUserId,
+            name: eventData.name,
+            start: eventData.start,
+            end: eventData.end,
+            type: eventData.type || 'autre',
+            hours: eventData.hours || null,
+            linked_prospect_id: eventData.linked_prospect_id || null
+        };
+        
+        console.log('=== ADDING EVENT ===');
+        console.log('Date string received:', eventData.start);
+        console.log('Payload to send:', payload);
+        console.log('Start date parts:', {
+            string: payload.start,
+            parsed: parseLocalISOString(payload.start)?.toString()
+        });
+        
+        const { data, error } = await window.supabaseClient
+            .from('crm_calendars')
+            .insert([payload])
+            .select();
+
+        if (error) {
+            console.error('Error adding rappels event:', error);
+            console.error('Error details:', JSON.stringify(error, null, 2));
+            alert('Erreur lors de l\'ajout de l\'événement: ' + (error.message || JSON.stringify(error)));
+            return null;
+        }
+
+        console.log('Event added successfully:', data);
+        showToast('Événement ajouté avec succès', 'success');
+        return data[0];
+    } catch (error) {
+        console.error('Error in addRappelsEvent:', error);
+        alert('Une erreur est survenue: ' + error.message);
+        return null;
+    }
+}
+
+// Delete event from database
+async function deleteRappelsEvent(eventId) {
+    if (!window.supabaseClient) {
+        console.error('Supabase client not available');
+        return false;
+    }
+
+    try {
+        const { error } = await window.supabaseClient
+            .from('crm_calendars')
+            .delete()
+            .eq('id', eventId);
+
+        if (error) {
+            console.error('Error deleting rappels event:', error);
+            showToast('Erreur lors de la suppression', 'error');
+            return false;
+        }
+
+        showToast('Événement supprimé', 'success');
+        return true;
+    } catch (error) {
+        console.error('Error in deleteRappelsEvent:', error);
+        showToast('Une erreur est survenue', 'error');
+        return false;
+    }
+}
+
+// Render the calendar
+async function renderRappelsCalendar() {
+    const calendarView = document.getElementById('rappelsCalendarView');
+    if (!calendarView) return;
+
+    await loadRappelsEvents();
+
+    // Always render week view
+    renderRappelsSemaineView();
+
+    // Initialize Lucide icons
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+}
+
+// Render week view
+function renderRappelsSemaineView() {
+    const calendarView = document.getElementById('rappelsCalendarView');
+    const titleEl = document.getElementById('rappelsCalendarTitle');
+    
+    // Get Monday of current week
+    const monday = new Date(rappelsCurrentDate);
+    const day = monday.getDay();
+    const diff = monday.getDate() - day + (day === 0 ? -6 : 1);
+    monday.setDate(diff);
+    monday.setHours(0, 0, 0, 0);
+
+    // Update title
+    const endOfWeek = new Date(monday);
+    endOfWeek.setDate(monday.getDate() + 6);
+    const startDay = monday.getDate();
+    const endDay = endOfWeek.getDate();
+    const monthYear = endOfWeek.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    if (titleEl) {
+        titleEl.textContent = `${startDay}-${endDay} ${monthYear}`;
+    }
+
+    // Create week grid
+    const days = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    let html = '<div class="calendar-week">';
+    
+    for (let i = 0; i < 7; i++) {
+        const currentDay = new Date(monday);
+        currentDay.setDate(monday.getDate() + i);
+        const dateStr = currentDay.toISOString().split('T')[0];
+        const dayNum = currentDay.getDate();
+        const isToday = currentDay.toDateString() === today.toDateString();
+
+        // Calculate days difference
+        const diffTime = currentDay - today;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        let daysIndicator = '';
+        if (diffDays > 0) {
+            daysIndicator = `<span class="rappels-days-indicator">➔ ${diffDays}j</span>`;
+        }
+
+        // Get events for this day
+        const dayEvents = rappelsEvents.filter(event => {
+            const eventStart = parseLocalISOString(event.start);
+            if (!eventStart) return false;
+            return eventStart.toDateString() === currentDay.toDateString();
+        });
+
+        html += `
+            <div class="calendar-day ${isToday ? 'today' : ''}" data-date="${dateStr}">
+                <div class="calendar-day-header">
+                    <span class="day-name">${days[i]}</span>
+                    <span class="day-number">${dayNum}</span>
+                    ${daysIndicator}
+                </div>
+                <div class="rappels-day-content">
+                    <button class="rappels-add-btn" data-date="${dateStr}" title="Ajouter un événement">
+                        <i data-lucide="plus"></i>
+                    </button>
+                    <div class="calendar-events">
+                        ${dayEvents.map(event => {
+                            const typeClass = `rappels-event-${event.type || 'autre'}`;
+                            
+                            // Use hours field directly
+                            const timeDisplay = event.hours || '';
+                            
+                            // Type labels
+                            const typeLabels = {
+                                'rappel': 'Rappel',
+                                'rdv': 'RDV',
+                                'tache': 'Tâche',
+                                'autre': 'Autre'
+                            };
+                            const typeLabel = typeLabels[event.type] || 'Autre';
+                            
+                            // Format event name with underlined mentions
+                            const formattedName = formatEventNameWithMentions(event.name, event.linked_prospect_id);
+                            
+                            return `
+                                <div class="calendar-event rappels-event-item ${typeClass}" data-event-id="${event.id}">
+                                    <div class="rappels-event-header">
+                                        <span class="rappels-event-type-label">${typeLabel}</span>
+                                    </div>
+                                    <div class="rappels-event-name">${formattedName}</div>
+                                    <div class="rappels-event-footer">
+                                        ${timeDisplay ? `<span class="rappels-event-time-badge">${timeDisplay}</span>` : '<span class="rappels-event-time-badge">Toute la journée</span>'}
+                                        <button class="rappels-event-delete" data-event-id="${event.id}" title="Marquer comme fait">
+                                            <i data-lucide="check"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    html += '</div>';
+    calendarView.innerHTML = html;
+
+    // Attach event listeners
+    attachRappelsEventListeners();
+}
+
+// Month view removed - only week view is used for Rappels
+/*
+function renderRappelsMoisView() {
+    const calendarView = document.getElementById('rappelsCalendarView');
+    const titleEl = document.getElementById('rappelsCalendarTitle');
+    
+    const year = rappelsCurrentDate.getFullYear();
+    const month = rappelsCurrentDate.getMonth();
+    
+    // Update title
+    const monthName = rappelsCurrentDate.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    if (titleEl) {
+        titleEl.textContent = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+    }
+
+    // Get first day of month and number of days
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    
+    // Get starting day (Monday = 0)
+    let startDay = firstDay.getDay() - 1;
+    if (startDay === -1) startDay = 6;
+
+    // Create month grid
+    const days = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+    let html = '';
+    
+    // Header with day names
+    html += '<div class="calendar-month-header">';
+    days.forEach(day => {
+        html += `<div class="calendar-month-header-day">${day}</div>`;
+    });
+    html += '</div>';
+
+    // Days grid
+    html += '<div class="calendar-month">';
+    
+    // Empty cells before first day
+    for (let i = 0; i < startDay; i++) {
+        html += '<div class="calendar-month-day empty"></div>';
+    }
+
+    // Days of month
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    for (let day = 1; day <= daysInMonth; day++) {
+        const currentDay = new Date(year, month, day);
+        const dateStr = currentDay.toISOString().split('T')[0];
+        const isToday = currentDay.toDateString() === today.toDateString();
+
+        // Calculate days difference
+        const diffTime = currentDay - today;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        let daysIndicator = '';
+        if (diffDays > 0) {
+            daysIndicator = `<span class="rappels-days-indicator-small">➔ ${diffDays}j</span>`;
+        }
+
+        // Get events for this day
+        const dayEvents = rappelsEvents.filter(event => {
+            const eventStart = parseLocalISOString(event.start);
+            if (!eventStart) return false;
+            return eventStart.toDateString() === currentDay.toDateString();
+        });
+
+        html += `
+            <div class="calendar-month-day ${isToday ? 'today' : ''}" data-date="${dateStr}">
+                <div class="day-number">${day}${daysIndicator}</div>
+                <button class="rappels-add-btn-small" data-date="${dateStr}" title="Ajouter">
+                    <i data-lucide="plus"></i>
+                </button>
+                <div class="calendar-events">
+                    ${dayEvents.map(event => {
+                        const typeClass = `rappels-event-${event.type || 'autre'}`;
+                        const timeDisplay = event.time ? `<span class="rappels-event-time-small">${event.time}</span>` : '';
+                        const formattedName = formatEventNameWithMentions(event.name, event.linked_prospect_id);
+                        return `
+                            <div class="calendar-event rappels-event-dot ${typeClass}" data-event-id="${event.id}" title="${event.name}">
+                                ${timeDisplay}
+                                <span class="rappels-event-dot-name">${formattedName}</span>
+                                <button class="rappels-event-delete-small" data-event-id="${event.id}" title="Marquer comme fait">
+                                    <i data-lucide="check"></i>
+                                </button>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    html += '</div>';
+    calendarView.innerHTML = html;
+
+    // Attach event listeners
+    attachRappelsEventListeners();
+}
+*/
+
+// Attach event listeners to buttons
+function attachRappelsEventListeners() {
+    // Add event buttons
+    const addButtons = document.querySelectorAll('.rappels-add-btn, .rappels-add-btn-small');
+    addButtons.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const date = btn.getAttribute('data-date');
+            showRappelsAddInput(date, btn);
+        });
+    });
+
+    // Delete event buttons
+    const deleteButtons = document.querySelectorAll('.rappels-event-delete, .rappels-event-delete-small');
+    deleteButtons.forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const eventId = parseInt(btn.getAttribute('data-event-id'));
+            const success = await deleteRappelsEvent(eventId);
+            if (success) {
+                await renderRappelsCalendar();
+            }
+        });
     });
 }
 
+// Show mention dropdown with contacts and companies
+async function showMentionDropdown(dropdown, searchText, inputField, selectedMentions) {
+    // Load prospects if not already loaded
+    if (!allProspects || allProspects.length === 0) {
+        await loadProspects();
+    }
+
+    // Filter prospects based on search
+    let filteredProspects = allProspects;
+    if (searchText) {
+        filteredProspects = allProspects.filter(p => {
+            const fullName = `${p.firstname || ''} ${p.lastname || ''}`.toLowerCase();
+            const society = (p.society || '').toLowerCase();
+            return fullName.includes(searchText) || society.includes(searchText);
+        });
+    }
+
+    if (filteredProspects.length === 0) {
+        dropdown.style.display = 'none';
+        return;
+    }
+
+    // Build dropdown HTML
+    let html = '<div class="mention-section-title">Contacts & Entreprises</div>';
+    
+    filteredProspects.slice(0, 10).forEach(prospect => {
+        const fullName = `${prospect.firstname || ''} ${prospect.lastname || ''}`.trim();
+        const society = prospect.society || '';
+        const displayName = society ? `${fullName} - ${society}` : fullName;
+        
+        html += `
+            <div class="mention-item" data-id="${prospect.id}" data-name="${displayName}" data-type="prospect">
+                <div class="mention-name">${displayName}</div>
+            </div>
+        `;
+    });
+
+    dropdown.innerHTML = html;
+    dropdown.style.display = 'block';
+
+    // Make first item active
+    const firstItem = dropdown.querySelector('.mention-item');
+    if (firstItem) {
+        firstItem.classList.add('active');
+    }
+
+    // Handle mention selection
+    dropdown.querySelectorAll('.mention-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const id = item.getAttribute('data-id');
+            const name = item.getAttribute('data-name');
+            const type = item.getAttribute('data-type');
+            
+            insertMention(inputField, name, id, type, selectedMentions);
+            dropdown.style.display = 'none';
+        });
+    });
+}
+
+// Insert mention into textarea
+function insertMention(inputField, name, id, type, selectedMentions) {
+    const cursorPos = inputField.selectionStart;
+    const text = inputField.value;
+    
+    // Find @ position
+    const textBeforeCursor = text.substring(0, cursorPos);
+    const atIndex = textBeforeCursor.lastIndexOf('@');
+    
+    if (atIndex !== -1) {
+        // Replace @search with @name
+        const beforeAt = text.substring(0, atIndex);
+        const afterCursor = text.substring(cursorPos);
+        const mentionText = `@${name}`;
+        
+        inputField.value = beforeAt + mentionText + ' ' + afterCursor;
+        
+        // Store mention data
+        selectedMentions.push({
+            id: id,
+            name: name,
+            type: type,
+            text: mentionText
+        });
+        
+        // Move cursor after mention
+        const newCursorPos = atIndex + mentionText.length + 1;
+        inputField.setSelectionRange(newCursorPos, newCursorPos);
+        inputField.focus();
+    }
+}
+
+// Format event name with mentions underlined
+function formatEventNameWithMentions(eventName, linkedProspectId) {
+    if (!eventName) return '';
+    
+    // Find all @mentions in the text
+    const mentionRegex = /@([^@\s]+(?:\s+[^@\s]+)*)/g;
+    
+    return eventName.replace(mentionRegex, (match) => {
+        return `<span class="event-mention">${match}</span>`;
+    });
+}
+
+// Helper function to create local ISO string without timezone conversion
+function toLocalISOString(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    
+    return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+}
+
+// Helper function to parse local ISO string without timezone issues
+function parseLocalISOString(isoString) {
+    if (!isoString) return null;
+    
+    // Extract date parts from ISO string (YYYY-MM-DDTHH:mm:ss)
+    const parts = isoString.match(/(\d{4})-(\d{2})-(\d{2})T?(\d{2})?:?(\d{2})?:?(\d{2})?/);
+    if (!parts) return new Date(isoString); // Fallback
+    
+    const [, year, month, day, hours = 0, minutes = 0, seconds = 0] = parts;
+    return new Date(
+        parseInt(year),
+        parseInt(month) - 1,
+        parseInt(day),
+        parseInt(hours),
+        parseInt(minutes),
+        parseInt(seconds)
+    );
+}
+
+// Show inline input to add event
+function showRappelsAddInput(dateStr, buttonEl) {
+    // Remove any existing input
+    const existingInput = document.querySelector('.rappels-inline-input');
+    if (existingInput) existingInput.remove();
+
+    // Create inline input
+    const input = document.createElement('div');
+    input.className = 'rappels-inline-input';
+    input.innerHTML = `
+        <div class="rappels-textarea-container">
+            <textarea class="rappels-event-input" placeholder="Description... (tapez @ pour mentionner un contact)" rows="2" autofocus></textarea>
+            <div class="rappels-mention-dropdown" style="display: none;"></div>
+        </div>
+        <div class="rappels-input-header">
+            <input type="time" class="rappels-event-time" placeholder="Heure">
+            <select class="rappels-event-type">
+                <option value="rappel">Rappel</option>
+                <option value="rdv">RDV</option>
+                <option value="tache">Tâche</option>
+                <option value="autre">Autre</option>
+            </select>
+            <button class="rappels-input-confirm" title="Valider">
+                <i data-lucide="check"></i>
+            </button>
+        </div>
+    `;
+
+    // Insert input after button
+    const parent = buttonEl.parentElement;
+    parent.appendChild(input);
+
+    // Initialize icons
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+
+    const inputField = input.querySelector('.rappels-event-input');
+    const timeField = input.querySelector('.rappels-event-time');
+    const typeField = input.querySelector('.rappels-event-type');
+    const confirmBtn = input.querySelector('.rappels-input-confirm');
+    const dropdown = input.querySelector('.rappels-mention-dropdown');
+
+    // Store mentions data
+    let selectedMentions = [];
+    let currentMentionSearch = null;
+    let mentionStartPos = null;
+
+    // Focus input
+    inputField.focus();
+
+    // Handle @ mention detection
+    inputField.addEventListener('input', async (e) => {
+        const cursorPos = e.target.selectionStart;
+        const textBeforeCursor = e.target.value.substring(0, cursorPos);
+        
+        // Check if @ was typed
+        const atIndex = textBeforeCursor.lastIndexOf('@');
+        
+        if (atIndex !== -1) {
+            const textAfterAt = textBeforeCursor.substring(atIndex + 1);
+            
+            // Show dropdown if @ is followed by space or nothing, or text to search
+            if (textAfterAt.length === 0 || !textAfterAt.includes(' ')) {
+                mentionStartPos = atIndex;
+                currentMentionSearch = textAfterAt.toLowerCase();
+                await showMentionDropdown(dropdown, currentMentionSearch, inputField, selectedMentions);
+            } else {
+                dropdown.style.display = 'none';
+            }
+        } else {
+            dropdown.style.display = 'none';
+        }
+    });
+
+    // Handle keyboard navigation in dropdown
+    inputField.addEventListener('keydown', (e) => {
+        if (dropdown.style.display !== 'none') {
+            const items = dropdown.querySelectorAll('.mention-item');
+            const activeItem = dropdown.querySelector('.mention-item.active');
+            let currentIndex = Array.from(items).indexOf(activeItem);
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (currentIndex < items.length - 1) {
+                    if (activeItem) activeItem.classList.remove('active');
+                    items[currentIndex + 1].classList.add('active');
+                }
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (currentIndex > 0) {
+                    if (activeItem) activeItem.classList.remove('active');
+                    items[currentIndex - 1].classList.add('active');
+                }
+            } else if (e.key === 'Enter' && activeItem) {
+                e.preventDefault();
+                activeItem.click();
+            } else if (e.key === 'Escape') {
+                dropdown.style.display = 'none';
+            }
+        }
+    });
+
+    // Confirm handler
+    const handleConfirm = async () => {
+        const eventName = inputField.value.trim();
+        if (!eventName) {
+            input.remove();
+            return;
+        }
+
+        const eventTime = timeField.value;
+        const eventType = typeField.value;
+        
+        // Combine date and time into datetime format WITHOUT timezone conversion
+        let startDateTime, endDateTime;
+        
+        if (eventTime) {
+            // If time is provided, create proper local datetime
+            const [hours, minutes] = eventTime.split(':');
+            // Parse date parts and add 1 day to compensate for timezone issues
+            const [year, month, day] = dateStr.split('-').map(Number);
+            const date = new Date(year, month - 1, day + 1, parseInt(hours), parseInt(minutes), 0, 0);
+            startDateTime = toLocalISOString(date);
+            endDateTime = toLocalISOString(date);
+        } else {
+            // If no time, use start of day in local timezone and add 1 day
+            const [year, month, day] = dateStr.split('-').map(Number);
+            const date = new Date(year, month - 1, day + 1, 0, 0, 0, 0);
+            startDateTime = toLocalISOString(date);
+            const endDate = new Date(year, month - 1, day + 1, 23, 59, 59, 999);
+            endDateTime = toLocalISOString(endDate);
+        }
+        
+        // Extract linked prospect IDs from mentions
+        let linkedProspectId = null;
+        if (selectedMentions.length > 0) {
+            // For now, use the first mentioned prospect
+            linkedProspectId = parseInt(selectedMentions[0].id);
+        }
+        
+        // Create event with hours field and linked prospect
+        const eventData = {
+            name: eventName,
+            start: startDateTime,
+            end: endDateTime,
+            type: eventType,
+            hours: eventTime || null,
+            linked_prospect_id: linkedProspectId
+        };
+
+        const result = await addRappelsEvent(eventData);
+        if (result) {
+            await renderRappelsCalendar();
+        }
+        input.remove();
+    };
+
+    confirmBtn.addEventListener('click', handleConfirm);
+    
+    inputField.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && e.ctrlKey) {
+            e.preventDefault();
+            handleConfirm();
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            input.remove();
+        }
+    });
+
+    // Click outside to cancel
+    setTimeout(() => {
+        document.addEventListener('click', function outsideClickHandler(e) {
+            if (!input.contains(e.target)) {
+                input.remove();
+                document.removeEventListener('click', outsideClickHandler);
+            }
+        });
+    }, 100);
+}
+
+// Navigation functions
+function rappelsGoToPrevious() {
+    // Always week view
+    rappelsCurrentDate.setDate(rappelsCurrentDate.getDate() - 7);
+    renderRappelsCalendar();
+}
+
+function rappelsGoToNext() {
+    // Always week view
+    rappelsCurrentDate.setDate(rappelsCurrentDate.getDate() + 7);
+    renderRappelsCalendar();
+}
+
+function rappelsGoToToday() {
+    rappelsCurrentDate = new Date();
+    renderRappelsCalendar();
+}
+
+// Load rappels when section becomes active
+async function loadRappels() {
+    const calendarLoading = document.getElementById('rappelsCalendarLoading');
+    const calendarView = document.getElementById('rappelsCalendarView');
+    
+    if (calendarLoading) calendarLoading.style.display = 'flex';
+    if (calendarView) calendarView.style.opacity = '0';
+    
+    try {
+        await renderRappelsCalendar();
+    } catch (error) {
+        console.error('Error loading rappels:', error);
+    } finally {
+        if (calendarLoading) calendarLoading.style.display = 'none';
+        if (calendarView) calendarView.style.opacity = '1';
+    }
+}
+
+// ===== HISTORIQUE DES APPELS =====
+
+// Global variables for historique filters
+let historiqueAllCalls = [];
+let historiqueCurrentFilter = 'all';
+let historiqueSearchQuery = '';
+
+// Load historique when section becomes active
+async function loadHistorique() {
+    const historiqueLoading = document.getElementById('historiqueLoading');
+    const historiqueContainer = document.getElementById('historiqueContainer');
+    
+    if (historiqueLoading) historiqueLoading.style.display = 'flex';
+    if (historiqueContainer) historiqueContainer.style.opacity = '0';
+    
+    try {
+        if (!window.supabaseClient || !window.currentUserId) {
+            console.error('Supabase client or user ID not available');
+            if (historiqueContainer) {
+                historiqueContainer.innerHTML = '<div class="empty-state"><i data-lucide="alert-circle"></i><p>Erreur de connexion</p></div>';
+            }
+            return;
+        }
+
+        // Get all calls for the current user
+        const { data: calls, error: callsError } = await window.supabaseClient
+            .from('crm_calls')
+            .select('*')
+            .eq('user_id', window.currentUserId)
+            .order('date', { ascending: false });
+
+        if (callsError) {
+            console.error('Error loading calls:', callsError);
+            if (historiqueContainer) {
+                historiqueContainer.innerHTML = '<div class="empty-state"><i data-lucide="alert-circle"></i><p>Erreur lors du chargement de l\'historique</p></div>';
+            }
+            return;
+        }
+
+        if (!calls || calls.length === 0) {
+            if (historiqueContainer) {
+                historiqueContainer.innerHTML = '<div class="empty-state"><i data-lucide="phone-off"></i><p>Aucun appel enregistré</p></div>';
+                if (typeof lucide !== 'undefined') {
+                    lucide.createIcons();
+                }
+            }
+            return;
+        }
+
+        // Get unique prospect IDs
+        const prospectIds = [...new Set(calls.map(call => call.prospect_id).filter(Boolean))];
+
+        // Get prospects data
+        let prospectsMap = {};
+        if (prospectIds.length > 0) {
+            const { data: prospects, error: prospectsError } = await window.supabaseClient
+                .from('crm_prospects')
+                .select('id, first_name, last_name, society, phone, email')
+                .in('id', prospectIds);
+
+            if (!prospectsError && prospects) {
+                prospects.forEach(prospect => {
+                    prospectsMap[prospect.id] = prospect;
+                });
+            }
+        }
+
+        // Merge calls with prospect data
+        const callsWithProspects = calls.map(call => ({
+            ...call,
+            prospect: prospectsMap[call.prospect_id] || null
+        }));
+
+        // Store all calls globally
+        historiqueAllCalls = callsWithProspects;
+
+        // Apply filters and display
+        applyHistoriqueFilters();
+
+    } catch (error) {
+        console.error('Error in loadHistorique:', error);
+        if (historiqueContainer) {
+            historiqueContainer.innerHTML = '<div class="empty-state"><i data-lucide="alert-circle"></i><p>Une erreur est survenue</p></div>';
+        }
+    } finally {
+        if (historiqueLoading) historiqueLoading.style.display = 'none';
+        if (historiqueContainer) historiqueContainer.style.opacity = '1';
+        
+        // Reinitialize icons
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
+    }
+}
+
+// Apply filters to historique
+function applyHistoriqueFilters() {
+    let filteredCalls = [...historiqueAllCalls];
+
+    // Apply status filter
+    if (historiqueCurrentFilter === 'answered') {
+        // Décroché: contacted or booked
+        filteredCalls = filteredCalls.filter(call => 
+            call.status === 'contacted' || call.status === 'booked'
+        );
+    } else if (historiqueCurrentFilter === 'no_answer') {
+        // Pas décroché: no_response or voicemail
+        filteredCalls = filteredCalls.filter(call => 
+            call.status === 'no_response' || call.status === 'voicemail'
+        );
+    } else if (historiqueCurrentFilter === 'converted') {
+        // Converti: booked only
+        filteredCalls = filteredCalls.filter(call => call.status === 'booked');
+    }
+
+    // Apply search filter
+    if (historiqueSearchQuery) {
+        const query = historiqueSearchQuery.toLowerCase();
+        filteredCalls = filteredCalls.filter(call => {
+            const prospect = call.prospect;
+            const prospectName = prospect ? `${prospect.first_name || ''} ${prospect.last_name || ''}`.toLowerCase() : '';
+            const prospectSociety = prospect?.society?.toLowerCase() || '';
+            const prospectPhone = prospect?.phone?.toLowerCase() || '';
+            const resume = call.resume?.toLowerCase() || '';
+            
+            return prospectName.includes(query) || 
+                   prospectSociety.includes(query) || 
+                   prospectPhone.includes(query) ||
+                   resume.includes(query);
+        });
+    }
+
+    // Display filtered calls
+    displayHistorique(filteredCalls);
+}
+
+// Update historique filter buttons
+function updateHistoriqueFilterButtons() {
+    const buttons = [
+        { id: 'historiqueFilterAll', filter: 'all' },
+        { id: 'historiqueFilterAnswered', filter: 'answered' },
+        { id: 'historiqueFilterNoAnswer', filter: 'no_answer' },
+        { id: 'historiqueFilterConverted', filter: 'converted' }
+    ];
+
+    buttons.forEach(btn => {
+        const element = document.getElementById(btn.id);
+        if (element) {
+            if (btn.filter === historiqueCurrentFilter) {
+                element.classList.add('active');
+            } else {
+                element.classList.remove('active');
+            }
+        }
+    });
+}
+
+// Display historique calls
+function displayHistorique(calls) {
+    const historiqueContainer = document.getElementById('historiqueContainer');
+    if (!historiqueContainer) return;
+
+    if (!calls || calls.length === 0) {
+        historiqueContainer.innerHTML = `
+            <div class="empty-state">
+                <i data-lucide="phone-off"></i>
+                <p>Aucun appel enregistré</p>
+            </div>
+        `;
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
+        return;
+    }
+
+    // Group calls by date
+    const callsByDate = {};
+    calls.forEach(call => {
+        const callDate = new Date(call.date);
+        const dateKey = callDate.toISOString().split('T')[0];
+        
+        if (!callsByDate[dateKey]) {
+            callsByDate[dateKey] = [];
+        }
+        callsByDate[dateKey].push(call);
+    });
+
+    // Generate HTML
+    let html = '';
+    const sortedDates = Object.keys(callsByDate).sort((a, b) => new Date(b) - new Date(a));
+
+    sortedDates.forEach(dateKey => {
+        const date = new Date(dateKey);
+        const dayName = date.toLocaleDateString('fr-FR', { weekday: 'long' });
+        const dateFormatted = date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+
+        html += `
+            <div class="historique-date-group">
+                <div class="historique-date-header">
+                    <h3>${dayName.charAt(0).toUpperCase() + dayName.slice(1)} ${dateFormatted}</h3>
+                    <span class="historique-date-count">${callsByDate[dateKey].length} appel${callsByDate[dateKey].length > 1 ? 's' : ''}</span>
+                </div>
+                <div class="historique-calls-list">
+        `;
+
+        callsByDate[dateKey].forEach(call => {
+            const prospect = call.prospect;
+            const prospectName = prospect ? `${prospect.first_name || ''} ${prospect.last_name || ''}`.trim() : 'Prospect inconnu';
+            const prospectSociety = prospect?.society || '-';
+            const prospectPhone = prospect?.phone || '-';
+            
+            // Format time
+            const callTime = call.date ? new Date(call.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '-';
+            
+            // Status badge
+            let statusBadge = '';
+            let statusClass = '';
+            if (call.status === 'booked') {
+                statusBadge = 'RDV Planifié';
+                statusClass = 'status-booked';
+            } else if (call.status === 'contacted') {
+                statusBadge = 'Contacté';
+                statusClass = 'status-contacted';
+            } else if (call.status === 'no_response') {
+                statusBadge = 'Pas de réponse';
+                statusClass = 'status-no-response';
+            } else if (call.status === 'voicemail') {
+                statusBadge = 'Message vocal';
+                statusClass = 'status-voicemail';
+            } else {
+                statusBadge = 'Autre';
+                statusClass = 'status-other';
+            }
+
+            html += `
+                <div class="historique-call-item ${statusClass}">
+                    <div class="historique-call-time">
+                        <i data-lucide="clock"></i>
+                        <span>${callTime}</span>
+                    </div>
+                    <div class="historique-call-info">
+                        <div class="historique-call-prospect">
+                            <i data-lucide="user"></i>
+                            <strong>${prospectName}</strong>
+                            <span class="historique-call-society">${prospectSociety}</span>
+                        </div>
+                        <div class="historique-call-contact">
+                            <i data-lucide="phone"></i>
+                            <span>${prospectPhone}</span>
+                        </div>
+                    </div>
+                    <div class="historique-call-status">
+                        <span class="historique-status-badge ${statusClass}">${statusBadge}</span>
+                    </div>
+                </div>
+            `;
+        });
+
+        html += `
+                </div>
+            </div>
+        `;
+    });
+
+    historiqueContainer.innerHTML = html;
+
+    // Reinitialize icons
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+}
+
+// Initialize rappels event listeners
+document.addEventListener('DOMContentLoaded', () => {
+    const rappelsPrevBtn = document.getElementById('rappelsPrevBtn');
+    const rappelsNextBtn = document.getElementById('rappelsNextBtn');
+    const rappelsTodayBtn = document.getElementById('rappelsTodayBtn');
+
+    if (rappelsPrevBtn) {
+        rappelsPrevBtn.addEventListener('click', rappelsGoToPrevious);
+    }
+
+    if (rappelsNextBtn) {
+        rappelsNextBtn.addEventListener('click', rappelsGoToNext);
+    }
+
+    if (rappelsTodayBtn) {
+        rappelsTodayBtn.addEventListener('click', rappelsGoToToday);
+    }
+});
 

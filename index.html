@@ -250,7 +250,7 @@
             const { data: { session } } = await supabase.auth.getSession();
             if (session) {
                 // User is already logged in, redirect to dashboard
-                window.location.href = 'dashboard.html';
+                window.location.href = 'dashboard';
             }
         }
 
@@ -269,7 +269,7 @@
 
                 if (data.user) {
                     // Login successful, redirect to dashboard
-                    window.location.href = 'dashboard.html';
+                    window.location.href = 'dashboard';
                 }
             } catch (error) {
                 console.error('Login error:', error);

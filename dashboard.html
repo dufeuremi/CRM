@@ -35,18 +35,6 @@
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a href="#" class="nav-link" data-section="prospects">
-                            <i data-lucide="users"></i>
-                            <span class="nav-text">Prospects</span>
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a href="#" class="nav-link" data-section="disponibilites">
-                            <i data-lucide="calendar"></i>
-                            <span class="nav-text">Disponibilités</span>
-                        </a>
-                    </li>
-                    <li class="nav-item">
                         <a href="#" class="nav-link" data-section="script">
                             <i data-lucide="file-text"></i>
                             <span class="nav-text">Script</span>
@@ -56,6 +44,30 @@
                         <a href="#" class="nav-link" data-section="presentation">
                             <i data-lucide="presentation"></i>
                             <span class="nav-text">Présentation</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" class="nav-link" data-section="prospects">
+                            <i data-lucide="users"></i>
+                            <span class="nav-text">Prospects</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" class="nav-link" data-section="rappels">
+                            <i data-lucide="bell"></i>
+                            <span class="nav-text">Rappels</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" class="nav-link" data-section="historique">
+                            <i data-lucide="phone"></i>
+                            <span class="nav-text">Historique des appels</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" class="nav-link" data-section="disponibilites">
+                            <i data-lucide="calendar"></i>
+                            <span class="nav-text">Disponibilités</span>
                         </a>
                     </li>
                 </ul>
@@ -82,6 +94,12 @@
                     <i data-lucide="menu"></i>
                 </button>
                 <h1 class="page-title" id="pageTitle">Dashboard</h1>
+                <div class="support-actions" style="margin-left:auto; display:flex; gap:0.5rem; align-items:center;">
+                    <button class="btn btn-secondary" id="supportBtn" style="display:flex; align-items:center; gap:0.5rem; font-size:0.875rem; padding:0.5rem 1rem;">
+                        <i data-lucide="alert-circle" style="width:18px; height:18px;"></i>
+                        <span>Signaler un problème</span>
+                    </button>
+                </div>
             </header>
 
             <div class="content-wrapper">
@@ -137,9 +155,49 @@
                             </div>
                             <div class="stat-info">
                                 <h3 id="conversionRate">0%</h3>
-                                <p>Taux de conversion</p>
+                                <p>Taux de RDV</p>
                             </div>
                         </div>
+                        </div>
+                        
+                        <!-- Graphique Statistiques d'appels -->
+                        <div class="chart-container">
+                            <div class="chart-header">
+                                <h3>Statistiques d'appels</h3>
+                                <div class="stats-controls">
+                                    <div class="stats-period-selector">
+                                        <label for="statsPeriod">Période:</label>
+                                        <select id="statsPeriod" class="stats-period-select">
+                                            <option value="all">Depuis le début</option>
+                                            <option value="7">7 derniers jours</option>
+                                            <option value="30">30 derniers jours</option>
+                                            <option value="90">90 derniers jours</option>
+                                        </select>
+                                    </div>
+                                    <div class="stats-toggles">
+                                        <label class="stats-toggle-item">
+                                            <input type="checkbox" id="toggleCalls" checked>
+                                            <span class="toggle-label">Nombre d'appels</span>
+                                        </label>
+                                        <label class="stats-toggle-item">
+                                            <input type="checkbox" id="togglePickupRate" checked>
+                                            <span class="toggle-label">Effectif qui a décroché</span>
+                                        </label>
+                                        <label class="stats-toggle-item">
+                                            <input type="checkbox" id="toggleMeetingRate" checked>
+                                            <span class="toggle-label">Effectif RDV</span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="callStatsEmpty" class="chart-empty-state" style="display: none;">
+                                <div class="chart-empty-icon">
+                                    <i data-lucide="phone"></i>
+                                </div>
+                                <h4>Commencez à passer des appels !</h4>
+                                <p>Vos statistiques d'appels apparaîtront ici une fois que vous aurez commencé.</p>
+                            </div>
+                            <canvas id="callStatsChart"></canvas>
                         </div>
                         
                         <!-- Graphique Chiffre d'affaires -->
@@ -190,6 +248,58 @@
                     </div>
                 </section>
 
+                <!-- Rappels Section -->
+                <section class="content-section" id="rappels">
+                    <div class="calendar-container">
+                        <div class="calendar-header">
+                            <div class="calendar-nav-left">
+                                <button class="btn-nav" id="rappelsPrevBtn">
+                                    <i data-lucide="chevron-left"></i>
+                                </button>
+                                <button class="btn-nav" id="rappelsNextBtn">
+                                    <i data-lucide="chevron-right"></i>
+                                </button>
+                                <h3 class="calendar-title" id="rappelsCalendarTitle">Semaine du ...</h3>
+                            </div>
+                            <div class="calendar-nav-right">
+                                <button class="btn btn-secondary" id="rappelsTodayBtn">Aujourd'hui</button>
+                            </div>
+                        </div>
+                        <div class="calendar-view" id="rappelsCalendarView">
+                            <!-- Le contenu sera généré dynamiquement selon la vue -->
+                        </div>
+                        <div class="calendar-loading" id="rappelsCalendarLoading" style="display: none;">
+                            <div class="loading-spinner"></div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Historique des appels Section -->
+                <section class="content-section" id="historique">
+                    <div class="section-header">
+                        <div class="prospects-search-container">
+                            <div class="search-wrapper">
+                                <i data-lucide="search" class="search-icon"></i>
+                                <input type="text" id="historiqueSearch" class="search-input" placeholder="Rechercher dans l'historique...">
+                            </div>
+                            <div class="prospects-filter-container">
+                                <button class="prospect-filter-tag active" data-filter="all" id="historiqueFilterAll">Tous</button>
+                                <button class="prospect-filter-tag" data-filter="answered" id="historiqueFilterAnswered">Décroché</button>
+                                <button class="prospect-filter-tag" data-filter="no_answer" id="historiqueFilterNoAnswer">Pas décroché</button>
+                                <button class="prospect-filter-tag" data-filter="converted" id="historiqueFilterConverted">Converti (RDV)</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="section-content">
+                        <div class="historique-loading" id="historiqueLoading" style="display: none;">
+                            <div class="loading-spinner"></div>
+                        </div>
+                        <div class="historique-container" id="historiqueContainer">
+                            <!-- L'historique sera généré dynamiquement -->
+                        </div>
+                    </div>
+                </section>
+
                 <!-- Prospects Section -->
                 <section class="content-section" id="prospects">
                     <div class="section-header">
@@ -201,6 +311,7 @@
                             <div class="prospects-filter-container">
                                 <button class="prospect-filter-tag" data-filter="called" id="filterCalled">Déjà contactés</button>
                                 <button class="prospect-filter-tag" data-filter="not_called" id="filterNotCalled">Non contactés</button>
+                                <button class="prospect-filter-tag" data-filter="booked" id="filterBooked">Réservé</button>
                             </div>
                         </div>
                         <button class="btn btn-primary" id="addProspectBtn">
@@ -368,7 +479,58 @@
         </div>
     </div>
 
-    <!-- Dépôt Modal -->
+    <!-- Invite Modal -->
+    <div id="inviteModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Envoyer invitation RDV</h3>
+                <button class="modal-close" id="closeInviteModal">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="inviteForm">
+                    <div class="form-group">
+                        <label class="form-label">Type d'envoi</label>
+                        <div class="invite-type-options">
+                            <label class="invite-type-option">
+                                <input type="radio" name="inviteType" value="presentation" checked>
+                                <span class="invite-type-label">
+                                    <i data-lucide="presentation"></i>
+                                    Envoyer la présentation
+                                </span>
+                            </label>
+                            <label class="invite-type-option">
+                                <input type="radio" name="inviteType" value="teams">
+                                <span class="invite-type-label">
+                                    <i data-lucide="video"></i>
+                                    Envoyer l'invitation Teams
+                                </span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="inviteSubject" class="form-label">Sujet</label>
+                        <input type="text" id="inviteSubject" class="form-input" value="Appel de découverte" required>
+                    </div>
+                    <div class="form-group" id="inviteDateGroup">
+                        <label for="inviteDate" class="form-label">Date du RDV</label>
+                        <input type="datetime-local" id="inviteDate" class="form-input" required>
+                    </div>
+                    <div class="form-group" id="inviteDurationGroup">
+                        <label for="inviteDuration" class="form-label">Durée (minutes)</label>
+                        <input type="number" id="inviteDuration" class="form-input" value="30" min="15" step="15" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelInvite">Annuler</button>
+                <button class="btn btn-primary" id="confirmInvite">Envoyer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Depot Modal -->
     <div id="depotModal" class="modal-overlay">
         <div class="modal-content">
             <div class="modal-header">
@@ -449,7 +611,10 @@
                     </div>
                     <div class="form-group">
                         <label for="prospectSociety" class="form-label">Entreprise</label>
-                        <input type="text" id="prospectSociety" class="form-input" required>
+                        <div class="company-autocomplete-container">
+                            <input type="text" id="prospectSociety" class="form-input" required>
+                            <div class="company-autocomplete-dropdown" id="companyAutocompleteDropdown" style="display: none;"></div>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label for="prospectRole" class="form-label">Rôle</label>
@@ -587,7 +752,7 @@
             
             if (error || !session) {
                 // No session, redirect to login
-                window.location.href = 'index.html';
+                window.location.href = '/';
                 return;
             }
             
@@ -695,6 +860,34 @@
         // Initialize auth check
         checkAuth();
     </script>
+    
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Support Modal -->
+    <div class="modal-overlay" id="supportModal">
+        <div class="modal-content modal-content-small">
+            <div class="modal-header">
+                <h3 class="modal-title" style="font-size:1.1rem; display:flex; align-items:center; gap:0.5rem;">
+                    <i data-lucide="alert-circle" style="width:20px; height:20px; color:#006EFF;"></i>
+                    Signaler un problème
+                </h3>
+                <button class="btn-icon modal-close" id="closeSupportModal">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size:0.85rem; color:#4b5b70; margin-bottom:1rem;">Décrivez le problème rencontré. Notre équipe analysera votre message. Ajoutez autant de détails que possible.</p>
+                <textarea id="supportMessage" placeholder="Ex: Impossible de charger les prospects, erreur 500..." style="width:100%; min-height:140px; resize:vertical; padding:0.75rem; font-family:Sora; font-size:0.9rem; border:1px solid #d6dde7; border-radius:8px;"></textarea>
+                <div id="supportError" style="display:none; color:#d51f1f; font-size:0.75rem; margin-top:0.4rem;">Le message est vide.</div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelSupportBtn" type="button">Annuler</button>
+                <button class="btn btn-primary" id="sendSupportBtn" type="button">Envoyer</button>
+            </div>
+        </div>
+    </div>
+    
     <script src="script.js"></script>
     <script>
         // Initialize Lucide icons
