@@ -1,3 +1,106 @@
+// Custom Alert and Confirm functions
+function customAlert(message, title = 'Information') {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('customAlertModal');
+        const titleEl = document.getElementById('customAlertTitle');
+        const messageEl = document.getElementById('customAlertMessage');
+        const okBtn = document.getElementById('customAlertOk');
+        const closeBtn = document.getElementById('closeCustomAlert');
+        
+        titleEl.textContent = title;
+        messageEl.textContent = message;
+        
+        let isResolved = false;
+        
+        const closeModal = () => {
+            if (isResolved) return;
+            isResolved = true;
+            modal.classList.remove('active');
+            document.removeEventListener('keydown', handleEscape);
+            modal.removeEventListener('click', handleOverlayClick);
+            resolve();
+        };
+        
+        const handleEscape = (e) => {
+            if (e.key === 'Escape' && modal.classList.contains('active')) {
+                closeModal();
+            }
+        };
+        
+        const handleOverlayClick = (e) => {
+            if (e.target === modal) {
+                closeModal();
+            }
+        };
+        
+        okBtn.onclick = closeModal;
+        closeBtn.onclick = closeModal;
+        modal.addEventListener('click', handleOverlayClick);
+        document.addEventListener('keydown', handleEscape);
+        
+        modal.classList.add('active');
+        
+        // Reinitialize icons
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
+    });
+}
+
+function customConfirm(message, title = 'Confirmation') {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('customConfirmModal');
+        const titleEl = document.getElementById('customConfirmTitle');
+        const messageEl = document.getElementById('customConfirmMessage');
+        const okBtn = document.getElementById('customConfirmOk');
+        const cancelBtn = document.getElementById('customConfirmCancel');
+        const closeBtn = document.getElementById('closeCustomConfirm');
+        
+        titleEl.textContent = title;
+        messageEl.textContent = message;
+        
+        let isResolved = false;
+        
+        const closeModal = (result) => {
+            if (isResolved) return;
+            isResolved = true;
+            modal.classList.remove('active');
+            document.removeEventListener('keydown', handleEscape);
+            modal.removeEventListener('click', handleOverlayClick);
+            resolve(result);
+        };
+        
+        const handleEscape = (e) => {
+            if (e.key === 'Escape' && modal.classList.contains('active')) {
+                closeModal(false);
+            }
+        };
+        
+        const handleOverlayClick = (e) => {
+            if (e.target === modal) {
+                closeModal(false);
+            }
+        };
+        
+        okBtn.onclick = () => closeModal(true);
+        cancelBtn.onclick = () => closeModal(false);
+        closeBtn.onclick = () => closeModal(false);
+        modal.addEventListener('click', handleOverlayClick);
+        document.addEventListener('keydown', handleEscape);
+        
+        modal.classList.add('active');
+        
+        // Reinitialize icons
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
+    });
+}
+
+// Override native alert and confirm
+window.alert = customAlert;
+window.confirm = customConfirm;
+
 // Sidebar toggle functionality
 const sidebar = document.getElementById('sidebar');
 const toggleBtn = document.getElementById('toggleBtn');
@@ -24,19 +127,45 @@ const navLinks = document.querySelectorAll('.nav-link');
 const contentSections = document.querySelectorAll('.content-section');
 const pageTitle = document.getElementById('pageTitle');
 
-navLinks.forEach(link => {
-    link.addEventListener('click', (e) => {
-        e.preventDefault();
+// Function to switch to a section
+function switchToSection(sectionId) {
+        // If clicking on disponibilites, show loading immediately BEFORE section becomes active
+        if (sectionId === 'disponibilites') {
+            const calendarContainer = document.querySelector('#disponibilites .calendar-container');
+            const calendarHeader = document.querySelector('#disponibilites .calendar-header');
+            const calendarLoading = document.getElementById('calendarLoading');
+            const calendarView = document.getElementById('calendarView');
+            
+            // Show loading spinner immediately, before section becomes active
+            if (calendarLoading && calendarView && calendarContainer) {
+                // Hide content immediately
+                if (calendarHeader) {
+                    calendarHeader.style.visibility = 'hidden';
+                    calendarHeader.style.opacity = '0';
+                }
+                calendarView.style.visibility = 'hidden';
+                calendarView.style.opacity = '0';
+                
+                // Remove border and overflow during loading
+                calendarContainer.style.border = 'none';
+                calendarContainer.style.overflow = 'visible';
+                
+                // Show loading spinner
+                calendarLoading.style.display = 'flex';
+            }
+        }
         
         // Remove active class from all links and sections
         navLinks.forEach(l => l.classList.remove('active'));
         contentSections.forEach(s => s.classList.remove('active'));
         
-        // Add active class to clicked link
-        link.classList.add('active');
+    // Add active class to the link corresponding to sectionId
+    const targetLink = document.querySelector(`[data-section="${sectionId}"]`);
+    if (targetLink) {
+        targetLink.classList.add('active');
+    }
         
         // Show corresponding section
-        const sectionId = link.getAttribute('data-section');
         const targetSection = document.getElementById(sectionId);
         
         if (targetSection) {
@@ -50,13 +179,30 @@ navLinks.forEach(link => {
                 'script': 'Script',
                 'presentation': 'Présentation'
             };
-            pageTitle.textContent = sectionNames[sectionId] || 'Dashboard';
+            const sectionName = sectionNames[sectionId] || 'Dashboard';
+            pageTitle.textContent = sectionName;
+            
+            // Update document title
+            document.title = `${sectionName} - Call manager - Taskalys`;
             
             // Initialize chart if dashboard section is shown
             if (sectionId === 'dashboard') {
-                setTimeout(() => {
-                    initRevenueChart();
-                }, 100);
+                // Show loading and hide content
+                const dashboardLoading = document.getElementById('dashboardLoading');
+                const dashboardContent = document.getElementById('dashboardContent');
+                if (dashboardLoading) dashboardLoading.style.display = 'flex';
+                if (dashboardContent) dashboardContent.style.display = 'none';
+                
+                // Load data immediately
+                loadDashboardData().then(() => {
+                    // Hide loading and show content when data is loaded
+                    if (dashboardLoading) dashboardLoading.style.display = 'none';
+                    if (dashboardContent) dashboardContent.style.display = 'block';
+                }).catch(() => {
+                    // Hide loading even on error
+                    if (dashboardLoading) dashboardLoading.style.display = 'none';
+                    if (dashboardContent) dashboardContent.style.display = 'block';
+                });
             }
             
             // Load prospects if prospects section is shown
@@ -70,7 +216,17 @@ navLinks.forEach(link => {
                 }, 100);
             }
             
-        }
+        // Save active section to localStorage
+        localStorage.setItem('activeSection', sectionId);
+    }
+}
+
+navLinks.forEach(link => {
+    link.addEventListener('click', (e) => {
+        e.preventDefault();
+        
+        const sectionId = link.getAttribute('data-section');
+        switchToSection(sectionId);
         
         // Close sidebar on mobile after selection
         if (window.innerWidth <= 768) {
@@ -78,6 +234,65 @@ navLinks.forEach(link => {
         }
     });
 });
+
+// Restore active section on page load
+function restoreActiveSection() {
+    const savedSection = localStorage.getItem('activeSection');
+    if (savedSection) {
+        // Check if the section exists
+        const sectionExists = document.getElementById(savedSection);
+        if (sectionExists) {
+            switchToSection(savedSection);
+        } else {
+            // If saved section doesn't exist, use default (dashboard)
+            switchToSection('dashboard');
+        }
+    } else {
+        // No saved section, use default (dashboard) and update title
+        const sectionNames = {
+            'dashboard': 'Dashboard',
+            'disponibilites': 'Disponibilités',
+            'prospects': 'Prospects',
+            'script': 'Script',
+            'presentation': 'Présentation'
+        };
+        document.title = `${sectionNames['dashboard']} - Call manager - Taskalys`;
+    }
+}
+
+// Try to restore immediately if DOM is ready, otherwise wait for DOMContentLoaded
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        restoreActiveSection();
+        // Load dashboard data immediately if dashboard is active
+        const activeSection = document.querySelector('.content-section.active');
+        if (activeSection && activeSection.id === 'dashboard') {
+            loadDashboardData();
+        } else {
+            // If dashboard is not active, hide loading and show content
+            const dashboardLoading = document.getElementById('dashboardLoading');
+            const dashboardContent = document.getElementById('dashboardContent');
+            if (dashboardLoading) dashboardLoading.style.display = 'none';
+            if (dashboardContent) dashboardContent.style.display = 'block';
+        }
+    });
+} else {
+    // DOM is already loaded, restore after a short delay to ensure all elements are ready
+    setTimeout(() => {
+        restoreActiveSection();
+        // Load dashboard data immediately if dashboard is active
+        const activeSection = document.querySelector('.content-section.active');
+        if (activeSection && activeSection.id === 'dashboard') {
+            loadDashboardData();
+        } else {
+            // If dashboard is not active, hide loading and show content
+            const dashboardLoading = document.getElementById('dashboardLoading');
+            const dashboardContent = document.getElementById('dashboardContent');
+            if (dashboardLoading) dashboardLoading.style.display = 'none';
+            if (dashboardContent) dashboardContent.style.display = 'block';
+        }
+    }, 100);
+}
 
 // Close sidebar when clicking outside on mobile
 document.addEventListener('click', (e) => {
@@ -261,14 +476,346 @@ function initRevenueChart() {
     });
 }
 
-// Example: Load dashboard data
+// Load dashboard data
 async function loadDashboardData() {
-    // const data = await API.get('/dashboard');
-    // Update dashboard stats here
-    console.log('Dashboard data loaded');
+    if (!window.supabaseClient || !window.currentUserId) {
+        console.error('Supabase client or user ID not available', {
+            hasClient: !!window.supabaseClient,
+            userId: window.currentUserId
+        });
+        // Hide loading and show content even on error
+        const dashboardLoading = document.getElementById('dashboardLoading');
+        const dashboardContent = document.getElementById('dashboardContent');
+        if (dashboardLoading) dashboardLoading.style.display = 'none';
+        if (dashboardContent) dashboardContent.style.display = 'block';
+        return;
+    }
+
+    // Ensure user_id is a number
+    const userId = typeof window.currentUserId === 'string' ? parseInt(window.currentUserId, 10) : window.currentUserId;
     
-    // Initialize chart
-    initRevenueChart();
+    console.log('Loading dashboard data for user_id:', userId, '(type:', typeof userId, ')');
+
+    try {
+        // Get start of current week (Monday)
+        const now = new Date();
+        const startOfWeek = new Date(now);
+        startOfWeek.setDate(now.getDate() - now.getDay() + 1); // Monday
+        startOfWeek.setHours(0, 0, 0, 0);
+        const startOfWeekISO = startOfWeek.toISOString();
+
+        console.log('Start of week:', startOfWeekISO);
+
+        // Test: Get all calls first to verify data exists
+        const { data: allCallsTest, error: testError } = await window.supabaseClient
+            .from('crm_calls')
+            .select('*')
+            .eq('user_id', userId);
+        
+        console.log('Test - All calls for user:', allCallsTest, 'Error:', testError);
+        
+        if (testError) {
+            // Try with string
+            const { data: allCallsTestStr, error: testErrorStr } = await window.supabaseClient
+                .from('crm_calls')
+                .select('*')
+                .eq('user_id', userId.toString());
+            console.log('Test - All calls for user (string):', allCallsTestStr, 'Error:', testErrorStr);
+        }
+
+        // 1. Get calls this week - use 'date' column (not 'created_at')
+        let { data: callsThisWeek, error: callsError } = await window.supabaseClient
+            .from('crm_calls')
+            .select('*')
+            .eq('user_id', userId)
+            .gte('date', startOfWeekISO);
+        
+        // If no results, try with string user_id
+        if (!callsError && (!callsThisWeek || callsThisWeek.length === 0)) {
+            const { data: callsThisWeekStr, error: callsErrorStr } = await window.supabaseClient
+                .from('crm_calls')
+                .select('*')
+                .eq('user_id', userId.toString())
+                .gte('date', startOfWeekISO);
+            
+            if (!callsErrorStr && callsThisWeekStr) {
+                callsThisWeek = callsThisWeekStr;
+            }
+        }
+
+        if (callsError) {
+            console.error('Error loading calls this week:', callsError);
+        } else {
+            console.log('Calls this week:', callsThisWeek);
+            const callsCount = callsThisWeek?.length || 0;
+            const callsThisWeekEl = document.getElementById('callsThisWeek');
+            if (callsThisWeekEl) {
+                callsThisWeekEl.textContent = callsCount;
+            }
+        }
+
+        // 2. Get total contacted prospects (unique prospect_id from crm_calls)
+        let { data: allCalls, error: allCallsError } = await window.supabaseClient
+            .from('crm_calls')
+            .select('prospect_id')
+            .eq('user_id', userId);
+        
+        // If no results, try with string user_id
+        if (!allCallsError && (!allCalls || allCalls.length === 0)) {
+            const { data: allCallsStr, error: allCallsErrorStr } = await window.supabaseClient
+                .from('crm_calls')
+                .select('prospect_id')
+                .eq('user_id', userId.toString());
+            
+            if (!allCallsErrorStr && allCallsStr) {
+                allCalls = allCallsStr;
+            }
+        }
+
+        // Count unique prospects (group by prospect_id)
+        let totalContactsCount = 0;
+        if (allCallsError) {
+            console.error('Error loading all calls:', allCallsError);
+        } else {
+            const uniqueProspects = new Set(allCalls?.map(call => call.prospect_id).filter(Boolean) || []);
+            totalContactsCount = uniqueProspects.size;
+            const totalContactsEl = document.getElementById('totalContacts');
+            if (totalContactsEl) {
+                totalContactsEl.textContent = totalContactsCount;
+            }
+        }
+
+        // 3. Get booked appointments (status = "booked")
+        let { data: bookedCalls, error: bookedError } = await window.supabaseClient
+            .from('crm_calls')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('status', 'booked');
+        
+        // If no results, try with string
+        if (!bookedError && (!bookedCalls || bookedCalls.length === 0)) {
+            const { data: bookedCallsStr, error: bookedErrorStr } = await window.supabaseClient
+                .from('crm_calls')
+                .select('*')
+                .eq('user_id', userId.toString())
+                .eq('status', 'booked');
+            
+            if (!bookedErrorStr && bookedCallsStr) {
+                bookedCalls = bookedCallsStr;
+            }
+        }
+
+        if (bookedError) {
+            console.error('Error loading booked appointments:', bookedError);
+        } else {
+            console.log('Booked calls:', bookedCalls);
+            const bookedCount = bookedCalls?.length || 0;
+            const bookedAppointmentsEl = document.getElementById('bookedAppointments');
+            if (bookedAppointmentsEl) {
+                bookedAppointmentsEl.textContent = bookedCount;
+            }
+        }
+
+        // 4. Calculate conversion rate (booked / total contacts)
+        const bookedCount = bookedCalls?.length || 0;
+        const conversionRate = totalContactsCount > 0 ? ((bookedCount / totalContactsCount) * 100).toFixed(1) : 0;
+        const conversionRateEl = document.getElementById('conversionRate');
+        if (conversionRateEl) {
+            conversionRateEl.textContent = conversionRate + '%';
+        }
+        console.log('Conversion rate:', conversionRate + '%', '(booked:', bookedCount, '/ total contacts:', totalContactsCount, ')');
+
+        // 5. Load revenue data for chart (pipeline_status = "converted")
+        const { data: convertedProspects, error: convertedError } = await window.supabaseClient
+            .from('crm_prospects')
+            .select('conversion_date, pipeline_status')
+            .eq('user_id', userId)
+            .eq('pipeline_status', 'converted')
+            .not('conversion_date', 'is', null);
+
+        if (convertedError) {
+            console.error('Error loading converted prospects:', convertedError);
+            // Show empty state if error
+            const months = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
+            const last12Months = [];
+            const revenueData = [];
+            
+            for (let i = 11; i >= 0; i--) {
+                const date = new Date();
+                date.setMonth(date.getMonth() - i);
+                const monthName = months[date.getMonth()];
+                last12Months.push(monthName);
+                revenueData.push(0);
+            }
+            updateRevenueChart(last12Months, revenueData);
+        } else {
+            // Group by month and calculate revenue (250€ per conversion)
+            const revenueByMonth = {};
+            const months = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
+            
+            convertedProspects?.forEach(prospect => {
+                if (prospect.conversion_date) {
+                    const date = new Date(prospect.conversion_date);
+                    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                    
+                    if (!revenueByMonth[monthKey]) {
+                        revenueByMonth[monthKey] = 0;
+                    }
+                    revenueByMonth[monthKey] += 250; // 250€ per conversion
+                }
+            });
+
+            // Get last 12 months
+            const last12Months = [];
+            const revenueData = [];
+            
+            for (let i = 11; i >= 0; i--) {
+                const date = new Date();
+                date.setMonth(date.getMonth() - i);
+                const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                const monthName = months[date.getMonth()];
+                
+                last12Months.push(monthName);
+                revenueData.push(revenueByMonth[monthKey] || 0);
+            }
+
+            // Update chart with real data
+            updateRevenueChart(last12Months, revenueData);
+        }
+
+    } catch (error) {
+        console.error('Error loading dashboard data:', error);
+    } finally {
+        // Hide loading and show content when done (success or error)
+        const dashboardLoading = document.getElementById('dashboardLoading');
+        const dashboardContent = document.getElementById('dashboardContent');
+        if (dashboardLoading) dashboardLoading.style.display = 'none';
+        if (dashboardContent) dashboardContent.style.display = 'block';
+    }
+}
+
+// Update revenue chart with data
+function updateRevenueChart(labels, data) {
+    const ctx = document.getElementById('revenueChart');
+    const emptyState = document.getElementById('revenueChartEmpty');
+    if (!ctx) return;
+    
+    // Check if all revenue values are 0
+    const totalRevenue = data.reduce((sum, value) => sum + value, 0);
+    const hasRevenue = totalRevenue > 0;
+    
+    if (!hasRevenue) {
+        // Hide chart and show empty state
+        ctx.style.display = 'none';
+        if (emptyState) {
+            emptyState.style.display = 'flex';
+            // Reinitialize icons
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        }
+        return;
+    }
+    
+    // Show chart and hide empty state
+    ctx.style.display = 'block';
+    if (emptyState) {
+        emptyState.style.display = 'none';
+    }
+    
+    // Destroy existing chart if it exists
+    if (revenueChart) {
+        revenueChart.destroy();
+    }
+    
+    revenueChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Chiffre d\'affaires (€)',
+                data: data,
+                borderColor: '#006EFF',
+                backgroundColor: 'rgba(0, 110, 255, 0.1)',
+                borderWidth: 2,
+                fill: true,
+                tension: 0.4,
+                pointRadius: 4,
+                pointBackgroundColor: '#006EFF',
+                pointBorderColor: '#FFFFFF',
+                pointBorderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            aspectRatio: 2.5,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top',
+                    labels: {
+                        font: {
+                            family: 'Sora',
+                            size: 12
+                        },
+                        color: '#19273A'
+                    }
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                    titleColor: '#19273A',
+                    bodyColor: '#1D2B3D',
+                    borderColor: '#7b90ad',
+                    borderWidth: 1,
+                    padding: 12,
+                    displayColors: true,
+                    callbacks: {
+                        label: function(context) {
+                            return context.dataset.label + ': ' + new Intl.NumberFormat('fr-FR', { 
+                                style: 'currency', 
+                                currency: 'EUR' 
+                            }).format(context.parsed.y);
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return new Intl.NumberFormat('fr-FR', { 
+                                style: 'currency', 
+                                currency: 'EUR',
+                                notation: 'compact'
+                            }).format(value);
+                        },
+                        font: {
+                            family: 'Sora',
+                            size: 11
+                        },
+                        color: '#1D2B3D'
+                    },
+                    grid: {
+                        color: 'rgba(123, 144, 173, 0.1)'
+                    }
+                },
+                x: {
+                    ticks: {
+                        font: {
+                            family: 'Sora',
+                            size: 11
+                        },
+                        color: '#1D2B3D'
+                    },
+                    grid: {
+                        display: false
+                    }
+                }
+            }
+        }
+    });
 }
 
 // Load prospects from Supabase
@@ -298,9 +845,20 @@ async function loadProspects() {
             return;
         }
 
+        // Check if user ID is available
+        if (!window.currentUserId) {
+            console.error('User ID not available');
+            prospectsLoading.style.display = 'none';
+            if (sectionHeader) sectionHeader.style.display = 'flex';
+            prospectsTableContainer.style.display = 'block';
+            displayProspectsError('Erreur : ID utilisateur non disponible');
+            return;
+        }
+
         const { data: prospects, error } = await window.supabaseClient
             .from('crm_prospects')
             .select('*')
+            .eq('user_id', window.currentUserId)
             .order('created_at', { ascending: false });
 
         // Hide loading and show content
@@ -358,6 +916,14 @@ function displayProspects(prospects) {
         // Format role
         const role = prospect.role || '-';
         
+        // Format LinkedIn - show icon only if LinkedIn exists
+        const linkedin = prospect.linkedin || '';
+        const linkedinIcon = linkedin 
+            ? `<a href="${linkedin}" target="_blank" rel="noopener noreferrer" class="linkedin-link" title="Voir le profil LinkedIn" onclick="event.stopPropagation();">
+                <i data-lucide="external-link"></i>
+            </a>`
+            : '-';
+        
         // Check if prospect has been called
         const called = prospect.called === true || prospect.called === 'true';
         const calledIcon = called 
@@ -384,6 +950,8 @@ function displayProspects(prospects) {
         }
 
         row.className = statusClass;
+        row.setAttribute('data-prospect-id', prospect.id);
+        row.style.cursor = 'pointer';
         row.innerHTML = `
             <td>
                 <div style="display: flex; align-items: center; gap: 0.5rem;">
@@ -394,13 +962,17 @@ function displayProspects(prospects) {
             <td>${society}</td>
             <td>${phone}</td>
             <td>${email}</td>
+            <td>${linkedinIcon}</td>
             <td><span class="status-badge">${role}</span></td>
             <td>
-                <button class="btn-icon btn-view" title="Voir" data-prospect-id="${prospect.id}">
-                    <i data-lucide="eye"></i>
+                <button class="btn-icon btn-record" title="Enregistrer" data-prospect-id="${prospect.id}">
+                    <i data-lucide="mic"></i>
                 </button>
                 <button class="btn-icon btn-confirm btn-depot" title="Confirmation/Dépôt" data-prospect-id="${prospect.id}">
                     <i data-lucide="upload"></i>
+                </button>
+                <button class="btn-icon btn-view" title="Voir" data-prospect-id="${prospect.id}">
+                    <i data-lucide="eye"></i>
                 </button>
                 <button class="btn-icon btn-delete" title="Supprimer" data-prospect-id="${prospect.id}" data-prospect-name="${(firstName + ' ' + lastName).trim() || 'ce prospect'}">
                     <i data-lucide="trash-2"></i>
@@ -419,17 +991,29 @@ function displayProspects(prospects) {
     // Add delete button event listeners
     const deleteButtons = document.querySelectorAll('.btn-delete');
     deleteButtons.forEach(btn => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent row click from firing
             const prospectId = parseInt(btn.getAttribute('data-prospect-id'));
             const prospectName = btn.getAttribute('data-prospect-name');
             showDeleteConfirm(prospectId, prospectName);
         });
     });
 
+    // Add record button event listeners
+    const recordButtons = document.querySelectorAll('.btn-record');
+    recordButtons.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent row click from firing
+            const prospectId = parseInt(btn.getAttribute('data-prospect-id'));
+            showRecordModal(prospectId);
+        });
+    });
+
     // Add depot button event listeners
     const depotButtons = document.querySelectorAll('.btn-depot');
     depotButtons.forEach(btn => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent row click from firing
             const prospectId = parseInt(btn.getAttribute('data-prospect-id'));
             showDepotModal(prospectId);
         });
@@ -438,9 +1022,26 @@ function displayProspects(prospects) {
     // Add view button event listeners
     const viewButtons = document.querySelectorAll('.btn-view');
     viewButtons.forEach(btn => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent row click from firing
             const prospectId = parseInt(btn.getAttribute('data-prospect-id'));
             showProspectDetails(prospectId);
+        });
+    });
+    
+    // Add click event listener to rows (open details on row click)
+    const prospectRows = tbody.querySelectorAll('tr[data-prospect-id]');
+    prospectRows.forEach(row => {
+        row.addEventListener('click', (e) => {
+            // Don't open details if clicking on a button
+            if (e.target.closest('.btn-icon')) {
+                return;
+            }
+            
+            const prospectId = parseInt(row.getAttribute('data-prospect-id'));
+            if (prospectId) {
+                showProspectDetails(prospectId);
+            }
         });
     });
 }
@@ -542,15 +1143,481 @@ async function deleteProspect(prospectId) {
     }
 }
 
+// Record modal variables
+let currentRecordProspectId = null;
+let mediaRecorder = null;
+let audioChunks = [];
+let recordStartTime = null;
+let recordTimerInterval = null;
+let currentRecording = null;
+let audioContext = null;
+let analyser = null;
+let waveformInterval = null;
+
+// Initialize waveform
+function initWaveform() {
+    const waveformContainer = document.getElementById('recordWaveform');
+    if (!waveformContainer) return;
+    
+    // Clear existing bars
+    waveformContainer.innerHTML = '';
+    
+    // Create 50 bars for the waveform
+    for (let i = 0; i < 50; i++) {
+        const bar = document.createElement('div');
+        bar.className = 'record-waveform-bar';
+        bar.style.height = '4px';
+        waveformContainer.appendChild(bar);
+    }
+}
+
+// Update waveform in real-time
+function updateWaveform() {
+    if (!analyser) return;
+    
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+    analyser.getByteFrequencyData(dataArray);
+    
+    const waveformContainer = document.getElementById('recordWaveform');
+    if (!waveformContainer) return;
+    
+    const bars = waveformContainer.querySelectorAll('.record-waveform-bar');
+    const barCount = bars.length;
+    const step = Math.floor(bufferLength / barCount);
+    
+    bars.forEach((bar, index) => {
+        const dataIndex = index * step;
+        const value = dataArray[dataIndex] || 0;
+        // Normalize value to height between 4px and 100px
+        const height = Math.max(4, (value / 255) * 100);
+        bar.style.height = `${height}px`;
+    });
+}
+
+// Show record modal
+function showRecordModal(prospectId) {
+    currentRecordProspectId = prospectId;
+    const modal = document.getElementById('recordModal');
+    
+    // Get prospect info and display name
+    const prospect = allProspects.find(p => p.id === prospectId);
+    const prospectNameEl = document.getElementById('recordProspectName');
+    if (prospectNameEl && prospect) {
+        const firstName = prospect.first_name || '';
+        const lastName = prospect.last_name || '';
+        const fullName = `${firstName} ${lastName}`.trim() || 'Prospect';
+        prospectNameEl.textContent = fullName;
+    }
+    
+    // Reset UI
+    document.getElementById('recordTimer').textContent = '00:00';
+    document.getElementById('startRecordBtn').style.display = 'flex';
+    document.getElementById('stopRecordBtn').style.display = 'none';
+    
+    // Reset source selection
+    const microphoneRadio = document.querySelector('input[name="recordSource"][value="microphone"]');
+    const systemRadio = document.querySelector('input[name="recordSource"][value="system"]');
+    if (microphoneRadio) microphoneRadio.checked = true;
+    if (systemRadio) systemRadio.checked = false;
+    
+    // Update source text
+    updateSourceText();
+    
+    // Close dropdown menu
+    const dropdown = document.querySelector('.record-source-dropdown');
+    const menu = document.getElementById('recordSourceMenu');
+    if (dropdown) dropdown.classList.remove('active');
+    if (menu) menu.style.display = 'none';
+    
+    // Initialize waveform
+    initWaveform();
+    
+    modal.classList.add('active');
+    
+    // Reinitialize icons
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+    
+    // Add event listeners for source selection
+    document.querySelectorAll('input[name="recordSource"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+            updateSourceText();
+            const dropdown = document.querySelector('.record-source-dropdown');
+            const menu = document.getElementById('recordSourceMenu');
+            if (dropdown) dropdown.classList.remove('active');
+            if (menu) menu.style.display = 'none';
+        });
+    });
+}
+
+// Update source text in dropdown button
+function updateSourceText() {
+    const selectedRadio = document.querySelector('input[name="recordSource"]:checked');
+    const sourceText = document.getElementById('recordSourceText');
+    if (selectedRadio && sourceText) {
+        const value = selectedRadio.value;
+        if (value === 'microphone') {
+            sourceText.textContent = 'Microphone';
+        } else if (value === 'system') {
+            sourceText.textContent = 'Sortie audio';
+        }
+    }
+}
+
+// Hide record modal
+function hideRecordModal() {
+    const modal = document.getElementById('recordModal');
+    modal.classList.remove('active');
+    currentRecordProspectId = null;
+    
+    // Stop recording if active
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        stopRecording();
+    }
+    
+    // Stop waveform
+    stopWaveform();
+}
+
+// Start recording
+async function startRecording() {
+    try {
+        const source = document.querySelector('input[name="recordSource"]:checked').value;
+        let stream;
+        
+        if (source === 'microphone') {
+            // Request microphone access
+            stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        } else {
+            // System audio capture (screen capture with audio)
+            // Note: This requires user to share screen with audio
+            try {
+                stream = await navigator.mediaDevices.getDisplayMedia({ 
+                    video: false, 
+                    audio: true 
+                });
+            } catch (error) {
+                // Fallback to microphone if system audio not available
+                console.warn('System audio not available, falling back to microphone');
+                stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            }
+        }
+        
+        // Initialize AudioContext for waveform visualization
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 256;
+        const audioSource = audioContext.createMediaStreamSource(stream);
+        audioSource.connect(analyser);
+        
+        // Initialize MediaRecorder
+        const options = { mimeType: 'audio/webm' };
+        if (!MediaRecorder.isTypeSupported('audio/webm')) {
+            options.mimeType = 'audio/mp4';
+        }
+        if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+            options.mimeType = 'audio/wav';
+        }
+        
+        mediaRecorder = new MediaRecorder(stream, options);
+        audioChunks = [];
+        
+        mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+                audioChunks.push(event.data);
+            }
+        };
+        
+        mediaRecorder.onstop = () => {
+            const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
+            const audioUrl = URL.createObjectURL(audioBlob);
+            
+            // Calculate duration
+            const duration = Math.floor((Date.now() - recordStartTime) / 1000);
+            const durationMinutes = Math.floor(duration / 60);
+            const durationSeconds = duration % 60;
+            const durationFormatted = `${String(durationMinutes).padStart(2, '0')}:${String(durationSeconds).padStart(2, '0')}`;
+            
+            // Store recording in localStorage with metadata
+            const recordingId = `recording_${Date.now()}_${currentRecordProspectId}`;
+            const recordingData = {
+                id: recordingId,
+                prospectId: currentRecordProspectId,
+                blob: audioBlob,
+                url: audioUrl,
+                mimeType: mediaRecorder.mimeType,
+                startTime: new Date(recordStartTime).toISOString(),
+                duration: duration,
+                durationFormatted: durationFormatted,
+                timestamp: Date.now()
+            };
+            
+            // Store in localStorage (convert blob to base64 for storage)
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                const base64data = reader.result;
+                const storageData = {
+                    ...recordingData,
+                    blob: null, // Remove blob from storage
+                    base64: base64data
+                };
+                localStorage.setItem(recordingId, JSON.stringify(storageData));
+                
+                // Store reference in prospect recordings
+                const prospectRecordings = JSON.parse(localStorage.getItem(`prospect_${currentRecordProspectId}_recordings`) || '[]');
+                prospectRecordings.push(recordingId);
+                localStorage.setItem(`prospect_${currentRecordProspectId}_recordings`, JSON.stringify(prospectRecordings));
+                
+                // Hide record modal
+                hideRecordModal();
+                
+                // Open depot modal with recording option (pass data with blob for immediate use)
+                openDepotWithRecording(currentRecordProspectId, {
+                    ...recordingData,
+                    base64: base64data
+                });
+            };
+            reader.readAsDataURL(audioBlob);
+            
+            // Stop all tracks
+            stream.getTracks().forEach(track => track.stop());
+        };
+        
+        // Start recording
+        recordStartTime = Date.now();
+        mediaRecorder.start();
+        
+        // Update UI
+        document.getElementById('startRecordBtn').style.display = 'none';
+        document.getElementById('stopRecordBtn').style.display = 'flex';
+        
+        // Start timer
+        startRecordTimer();
+        
+        // Start waveform animation
+        waveformInterval = setInterval(updateWaveform, 50);
+        
+    } catch (error) {
+        console.error('Error starting recording:', error);
+        alert('Erreur lors du démarrage de l\'enregistrement : ' + error.message);
+    }
+}
+
+// Stop recording
+function stopRecording() {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+        stopRecordTimer();
+        stopWaveform();
+    }
+}
+
+// Stop waveform animation
+function stopWaveform() {
+    if (waveformInterval) {
+        clearInterval(waveformInterval);
+        waveformInterval = null;
+    }
+    
+    // Reset waveform bars to minimum height
+    const waveformContainer = document.getElementById('recordWaveform');
+    if (waveformContainer) {
+        const bars = waveformContainer.querySelectorAll('.record-waveform-bar');
+        bars.forEach(bar => {
+            bar.style.height = '4px';
+        });
+    }
+    
+    // Close audio context
+    if (audioContext) {
+        audioContext.close();
+        audioContext = null;
+        analyser = null;
+    }
+}
+
+// Start record timer
+function startRecordTimer() {
+    recordTimerInterval = setInterval(() => {
+        if (recordStartTime) {
+            const elapsed = Math.floor((Date.now() - recordStartTime) / 1000);
+            const minutes = Math.floor(elapsed / 60);
+            const seconds = elapsed % 60;
+            document.getElementById('recordTimer').textContent = 
+                `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        }
+    }, 1000);
+}
+
+// Stop record timer
+function stopRecordTimer() {
+    if (recordTimerInterval) {
+        clearInterval(recordTimerInterval);
+        recordTimerInterval = null;
+    }
+}
+
+// Open depot modal with recording
+function openDepotWithRecording(prospectId, recordingData) {
+    currentRecording = recordingData;
+    
+    // Show depot modal
+    showDepotModal(prospectId);
+    
+    // Wait for modal to be visible, then add recording option
+    setTimeout(() => {
+        const depotOptions = document.querySelector('.depot-options');
+        
+        if (depotOptions) {
+            // Check if recording option already exists
+            let recordingOption = document.querySelector('.depot-option[data-value="recording_available"]');
+            
+            if (!recordingOption) {
+                // Create recording option as a button similar to other options
+                recordingOption = document.createElement('label');
+                recordingOption.className = 'depot-option';
+                recordingOption.setAttribute('data-value', 'recording_available');
+                
+                const durationTime = new Date(recordingData.startTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                
+                recordingOption.innerHTML = `
+                    <input type="radio" name="depotStatus" value="recording_available">
+                    <span class="depot-option-label">
+                        <i data-lucide="mic" style="width: 18px; height: 18px; margin-right: 0.5rem; color: var(--danger-color); vertical-align: middle;"></i>
+                        Enregistrement disponible (${recordingData.durationFormatted} - ${durationTime})
+                    </span>
+                `;
+                
+                // Insert at the beginning of options
+                depotOptions.insertBefore(recordingOption, depotOptions.firstChild);
+                
+                // Reinitialize icons
+                if (typeof lucide !== 'undefined') {
+                    lucide.createIcons();
+                }
+                
+                // Add event listener for recording option
+                const recordingRadio = recordingOption.querySelector('input[type="radio"]');
+                recordingRadio.addEventListener('change', () => {
+                    if (recordingRadio.checked) {
+                        useRecordingForDepot(recordingData);
+                        updateDepotOptionUI();
+                    }
+                });
+                
+                // Auto-select and use recording if it's the first time
+                recordingRadio.checked = true;
+                recordingRadio.dispatchEvent(new Event('change'));
+            } else {
+                // Update existing option
+                const recordingRadio = recordingOption.querySelector('input[type="radio"]');
+                recordingRadio.checked = true;
+                recordingRadio.dispatchEvent(new Event('change'));
+            }
+        }
+    }, 100);
+}
+
+// Use recording for depot
+function useRecordingForDepot(recordingData) {
+    // Get blob from recordingData or from localStorage
+    let blob = recordingData.blob;
+    
+    if (!blob && recordingData.base64) {
+        // Convert base64 back to blob
+        const base64Data = recordingData.base64;
+        const byteCharacters = atob(base64Data.split(',')[1]);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        blob = new Blob([byteArray], { type: recordingData.mimeType });
+    } else if (!blob && recordingData.id) {
+        // Try to get from localStorage
+        const storedData = localStorage.getItem(recordingData.id);
+        if (storedData) {
+            const parsed = JSON.parse(storedData);
+            if (parsed.base64) {
+                // Convert base64 back to blob
+                const byteCharacters = atob(parsed.base64.split(',')[1]);
+                const byteNumbers = new Array(byteCharacters.length);
+                for (let i = 0; i < byteCharacters.length; i++) {
+                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                }
+                const byteArray = new Uint8Array(byteNumbers);
+                blob = new Blob([byteArray], { type: parsed.mimeType });
+            }
+        }
+    }
+    
+    if (!blob) {
+        alert('Erreur : Impossible de récupérer l\'enregistrement');
+        return;
+    }
+    
+    // Create a File object from the blob
+    const mimeType = recordingData.mimeType || 'audio/webm';
+    const extension = mimeType.split('/')[1] || 'webm';
+    const fileName = `recording_${currentRecordProspectId}_${Date.now()}.${extension}`;
+    const file = new File([blob], fileName, { type: mimeType });
+    
+    // Set file in input
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(file);
+    const fileInput = document.getElementById('depotFileInput');
+    if (fileInput) {
+        fileInput.files = dataTransfer.files;
+        
+        // Trigger change event
+        const event = new Event('change', { bubbles: true });
+        fileInput.dispatchEvent(event);
+        
+        // Update upload zone text
+        const uploadText = document.querySelector('.depot-upload-text');
+        if (uploadText) {
+            uploadText.textContent = `Fichier sélectionné : ${fileName}`;
+        }
+    }
+}
+
 // Show depot modal
 let currentDepotId = null;
 function showDepotModal(prospectId) {
     currentDepotId = prospectId;
     const modal = document.getElementById('depotModal');
     
+    // Store prospect ID in modal as backup
+    if (modal && prospectId) {
+        modal.setAttribute('data-prospect-id', prospectId.toString());
+    }
+    
+    // Remove recording option if it exists (unless we're opening with a recording)
+    const recordingOption = document.querySelector('.depot-option[data-value="recording_available"]');
+    if (recordingOption && !currentRecording) {
+        recordingOption.remove();
+    }
+    
     // Reset form
-    document.querySelector('input[name="depotStatus"][value="recorded"]').checked = true;
+    const recordedRadio = document.querySelector('input[name="depotStatus"][value="recorded"]');
+    if (recordedRadio && !currentRecording) {
+        recordedRadio.checked = true;
+    }
     document.getElementById('depotNote').value = '';
+    
+    // Reset file input
+    const fileInput = document.getElementById('depotFileInput');
+    if (fileInput) {
+        fileInput.value = '';
+    }
+    
+    // Reset upload zone text
+    const uploadText = document.querySelector('.depot-upload-text');
+    if (uploadText) {
+        uploadText.textContent = 'Cliquez pour téléverser ou glissez-déposez le fichier';
+    }
     
     // Set current date and time (format: YYYY-MM-DDTHH:mm)
     const now = new Date();
@@ -562,6 +1629,14 @@ function showDepotModal(prospectId) {
     const dateTimeValue = `${year}-${month}-${day}T${hours}:${minutes}`;
     document.getElementById('depotDateTime').value = dateTimeValue;
     
+    // Update UI based on selected option
+    updateDepotOptionUI();
+    
+    // Reinitialize icons for upload zone
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+    
     modal.classList.add('active');
     
     // Reinitialize icons
@@ -570,33 +1645,182 @@ function showDepotModal(prospectId) {
     }
 }
 
+// Update depot option UI based on selection
+function updateDepotOptionUI() {
+    const selectedValue = document.querySelector('input[name="depotStatus"]:checked')?.value;
+    const uploadContainer = document.getElementById('depotUploadContainer');
+    
+    // Remove selected class from all options
+    document.querySelectorAll('.depot-option').forEach(option => {
+        option.classList.remove('selected');
+    });
+    
+    // Add selected class to the checked option
+    const checkedRadio = document.querySelector('input[name="depotStatus"]:checked');
+    if (checkedRadio) {
+        const selectedOption = checkedRadio.closest('.depot-option');
+        if (selectedOption) {
+            selectedOption.classList.add('selected');
+        }
+    }
+    
+    // Show/hide upload zone based on selection
+    const recordedOption = document.querySelector('.depot-option[data-value="recorded"]');
+    if (uploadContainer && recordedOption) {
+        // Show upload zone if "recorded" or "recording_available" is selected
+        if (selectedValue === 'recorded' || selectedValue === 'recording_available') {
+            uploadContainer.style.display = 'block';
+            recordedOption.classList.add('has-upload-visible');
+        } else {
+            uploadContainer.style.display = 'none';
+            recordedOption.classList.remove('has-upload-visible');
+        }
+    }
+}
+
 // Hide depot modal
 function hideDepotModal() {
     const modal = document.getElementById('depotModal');
     modal.classList.remove('active');
     currentDepotId = null;
+    currentRecording = null;
+    
+    // Remove prospect ID from modal
+    if (modal) {
+        modal.removeAttribute('data-prospect-id');
+    }
+    
+    // Remove recording option if it exists
+    const recordingOption = document.querySelector('.depot-option[data-value="recording_available"]');
+    if (recordingOption) {
+        recordingOption.remove();
+    }
 }
 
 // Confirm depot
-function confirmDepot() {
+async function confirmDepot() {
     const selectedStatus = document.querySelector('input[name="depotStatus"]:checked').value;
     const dateTime = document.getElementById('depotDateTime').value;
     const note = document.getElementById('depotNote').value;
+    const fileInput = document.getElementById('depotFileInput');
+    const file = fileInput?.files[0] || null;
     
-    console.log('Depot confirmed:', {
-        prospectId: currentDepotId,
-        status: selectedStatus,
-        dateTime: dateTime,
-        note: note
-    });
+    // Get Supabase session token
+    let supabaseToken = null;
+    if (typeof window.supabaseClient !== 'undefined') {
+        try {
+            const { data: { session }, error } = await window.supabaseClient.auth.getSession();
+            if (session && !error) {
+                supabaseToken = session.access_token;
+            }
+        } catch (error) {
+            console.error('Error getting Supabase session:', error);
+        }
+    }
     
-    // TODO: Add API call here to save depot data
+    // Map deposit type
+    const depositTypeMap = {
+        'recorded': 'recorded',
+        'recording_available': 'recorded', // Recording available is also treated as recorded
+        'not_recorded': 'not_recorded',
+        'no_contact': 'no_contact'
+    };
+    const depositType = depositTypeMap[selectedStatus] || selectedStatus;
+    
+    // Validate required fields - try to get prospect ID from currentDepotId or modal backup
+    let prospectId = currentDepotId;
+    if (!prospectId) {
+        // Try to get from modal data attribute as backup
+        const modal = document.getElementById('depotModal');
+        if (modal) {
+            const modalProspectId = modal.getAttribute('data-prospect-id');
+            if (modalProspectId) {
+                prospectId = parseInt(modalProspectId);
+            }
+        }
+    }
+    
+    if (!prospectId || isNaN(prospectId)) {
+        alert('Erreur : ID prospect manquant');
+        console.error('currentDepotId:', currentDepotId, 'prospectId:', prospectId);
+        return;
+    }
+    
+    if (!window.currentUserId) {
+        alert('Erreur : ID utilisateur manquant');
+        return;
+    }
+    
+    if (!supabaseToken) {
+        alert('Erreur : Token Supabase manquant. Veuillez vous reconnecter.');
+        return;
+    }
+    
+    // Create FormData for file upload
+    const formData = new FormData();
+    
+    // Add file if present - rename to "Enregistrement"
+    if (file) {
+        // Get file extension
+        const fileExtension = file.name.split('.').pop() || '';
+        const newFileName = fileExtension ? `Enregistrement.${fileExtension}` : 'Enregistrement';
+        
+        // Create a new File with the renamed name
+        const renamedFile = new File([file], newFileName, { type: file.type });
+        formData.append('file', renamedFile);
+    }
+    
+    // Add other data
+    formData.append('token', supabaseToken);
+    formData.append('prospect_id', prospectId.toString());
+    formData.append('user_id', window.currentUserId.toString());
+    formData.append('deposit_type', depositType);
+    
+    // Add optional fields
+    if (dateTime) {
+        formData.append('datetime', dateTime);
+    }
+    if (note) {
+        formData.append('note', note);
+    }
+    
+    // Disable confirm button during request
+    const confirmBtn = document.getElementById('confirmDepot');
+    const originalBtnText = confirmBtn?.textContent || 'Valider';
+    if (confirmBtn) {
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Envoi en cours...';
+    }
+    
+    try {
+        const response = await fetch('https://host.taskalys.app/webhook/deposit', {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Erreur HTTP: ${response.status} - ${errorText}`);
+        }
+        
+        const result = await response.json();
+        console.log('Depot sent successfully:', result);
     
     // Hide modal
     hideDepotModal();
     
-    // Optionally show success message
+        // Show success message
     alert('Dépôt enregistré avec succès');
+    } catch (error) {
+        console.error('Error sending depot:', error);
+        alert('Erreur lors de l\'envoi du dépôt : ' + error.message);
+    } finally {
+        // Re-enable button
+        if (confirmBtn) {
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = originalBtnText;
+        }
+    }
 }
 
 // Show prospect details modal
@@ -616,8 +1840,46 @@ function showProspectDetails(prospectId) {
     const fullName = `${prospect.first_name || ''} ${prospect.last_name || ''}`.trim() || 'Prospect';
     title.textContent = fullName;
 
+    // Add action buttons to header
+    const headerActions = document.getElementById('prospectDetailsHeaderActions');
+    if (headerActions) {
+        headerActions.innerHTML = `
+            <button class="btn btn-secondary btn-depot-detail" data-prospect-id="${prospectId}">
+                <i data-lucide="upload"></i>
+                Dépôt
+            </button>
+            <button class="btn btn-primary btn-record-detail" data-prospect-id="${prospectId}">
+                <i data-lucide="mic"></i>
+                Enregistrer l'appel
+            </button>
+        `;
+        
+        // Add event listeners for action buttons
+        const depotDetailBtn = headerActions.querySelector('.btn-depot-detail');
+        const recordDetailBtn = headerActions.querySelector('.btn-record-detail');
+        
+        if (depotDetailBtn) {
+            depotDetailBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                hideProspectDetails();
+                showDepotModal(prospectId);
+            });
+        }
+        
+        if (recordDetailBtn) {
+            recordDetailBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                hideProspectDetails();
+                showRecordModal(prospectId);
+            });
+        }
+    }
+
     // Fill info grid
     fillProspectInfo(prospect);
+
+    // Fill note personnelle
+    fillProspectNote(prospect);
 
     // Fill summary (placeholder for now)
     fillProspectSummary(prospect);
@@ -646,12 +1908,13 @@ function hideProspectDetails() {
 // Fill prospect info grid
 function fillProspectInfo(prospect) {
     const grid = document.getElementById('prospectInfoGrid');
-    const firstName = prospect.first_name || '-';
-    const lastName = prospect.last_name || '-';
-    const email = prospect.email || '-';
-    const phone = prospect.phone || '-';
-    const society = prospect.society || '-';
-    const role = prospect.role || '-';
+    const firstName = prospect.first_name || '';
+    const lastName = prospect.last_name || '';
+    const email = prospect.email || '';
+    const phone = prospect.phone || '';
+    const society = prospect.society || '';
+    const role = prospect.role || '';
+    const linkedin = prospect.linkedin || '';
     
     // Check if prospect has been called
     const called = prospect.called === true || prospect.called === 'true';
@@ -661,27 +1924,31 @@ function fillProspectInfo(prospect) {
     grid.innerHTML = `
         <div class="prospect-info-item">
             <span class="prospect-info-label">Prénom</span>
-            <span class="prospect-info-value">${firstName}</span>
+            <span class="prospect-info-value editable-field" data-field="first_name" data-prospect-id="${prospect.id}" contenteditable="false">${firstName || '-'}</span>
         </div>
         <div class="prospect-info-item">
             <span class="prospect-info-label">Nom</span>
-            <span class="prospect-info-value"><strong>${lastName}</strong></span>
+            <span class="prospect-info-value editable-field" data-field="last_name" data-prospect-id="${prospect.id}" contenteditable="false"><strong>${lastName || '-'}</strong></span>
         </div>
         <div class="prospect-info-item">
             <span class="prospect-info-label">Email</span>
-            <span class="prospect-info-value">${email}</span>
+            <span class="prospect-info-value editable-field" data-field="email" data-prospect-id="${prospect.id}" contenteditable="false">${email || '-'}</span>
         </div>
         <div class="prospect-info-item">
             <span class="prospect-info-label">Téléphone</span>
-            <span class="prospect-info-value">${phone}</span>
+            <span class="prospect-info-value editable-field" data-field="phone" data-prospect-id="${prospect.id}" contenteditable="false">${phone || '-'}</span>
         </div>
         <div class="prospect-info-item">
             <span class="prospect-info-label">Entreprise</span>
-            <span class="prospect-info-value">${society}</span>
+            <span class="prospect-info-value editable-field" data-field="society" data-prospect-id="${prospect.id}" contenteditable="false">${society || '-'}</span>
         </div>
         <div class="prospect-info-item">
             <span class="prospect-info-label">Rôle</span>
-            <span class="prospect-info-value">${role}</span>
+            <span class="prospect-info-value editable-field" data-field="role" data-prospect-id="${prospect.id}" contenteditable="false">${role || '-'}</span>
+        </div>
+        <div class="prospect-info-item">
+            <span class="prospect-info-label">LinkedIn</span>
+            <span class="prospect-info-value editable-field" data-field="linkedin" data-prospect-id="${prospect.id}" contenteditable="false">${linkedin || '-'}</span>
         </div>
         <div class="prospect-info-item">
             <span class="prospect-info-label">Déjà appelé</span>
@@ -698,132 +1965,562 @@ function fillProspectInfo(prospect) {
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();
     }
+    
+    // Add click event listeners to editable fields
+    const editableFields = grid.querySelectorAll('.editable-field');
+    editableFields.forEach(field => {
+        let originalValue = field.textContent.trim();
+        
+        field.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (!field.isContentEditable) {
+                originalValue = field.textContent.trim();
+                field.contentEditable = 'true';
+                field.classList.add('editing');
+                field.focus();
+                
+                // Remove strong tag if present (for last name)
+                if (field.querySelector('strong')) {
+                    const strongText = field.querySelector('strong').textContent;
+                    field.textContent = strongText;
+                }
+                
+                // Select all text
+                const range = document.createRange();
+                range.selectNodeContents(field);
+                const selection = window.getSelection();
+                selection.removeAllRanges();
+                selection.addRange(range);
+            }
+        });
+        
+        field.addEventListener('blur', async () => {
+            if (field.isContentEditable) {
+                field.contentEditable = 'false';
+                field.classList.remove('editing');
+                
+                const newValue = field.textContent.trim();
+                const fieldName = field.getAttribute('data-field');
+                
+                // If value changed, update in Supabase
+                if (newValue !== originalValue && newValue !== '-') {
+                    const prospectId = field.getAttribute('data-prospect-id');
+                    
+                    // Update in Supabase
+                    await updateProspectField(prospectId, fieldName, newValue);
+                    
+                    // Update local data
+                    const prospect = allProspects.find(p => p.id == prospectId);
+                    if (prospect) {
+                        prospect[fieldName] = newValue;
+                    }
+                    
+                    // Re-render if it's last_name to restore strong tag
+                    if (fieldName === 'last_name') {
+                        field.innerHTML = `<strong>${newValue}</strong>`;
+                    }
+                } else {
+                    // Restore original value
+                    if (fieldName === 'last_name' && originalValue !== '-') {
+                        field.innerHTML = `<strong>${originalValue}</strong>`;
+                    } else {
+                        field.textContent = originalValue || '-';
+                    }
+                }
+            }
+        });
+        
+        field.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && field.isContentEditable) {
+                e.preventDefault();
+                field.blur();
+            }
+            if (e.key === 'Escape' && field.isContentEditable) {
+                e.preventDefault();
+                field.textContent = originalValue || '-';
+                if (field.getAttribute('data-field') === 'last_name' && originalValue !== '-') {
+                    field.innerHTML = `<strong>${originalValue}</strong>`;
+                }
+                field.contentEditable = 'false';
+                field.classList.remove('editing');
+            }
+        });
+    });
+}
+
+// Fill prospect note personnelle
+function fillProspectNote(prospect) {
+    const noteContainer = document.getElementById('prospectNote');
+    if (!noteContainer) return;
+    
+    const note = prospect.note || '';
+    const prospectId = prospect.id;
+    
+    if (note && note.trim() !== '') {
+        noteContainer.innerHTML = `<p class="editable-text" data-field="note" data-prospect-id="${prospectId}" contenteditable="false">${note}</p>`;
+    } else {
+        noteContainer.innerHTML = `<p class="editable-text prospect-note-placeholder" data-field="note" data-prospect-id="${prospectId}" contenteditable="false">Aucune note personnelle pour le moment.</p>`;
+    }
+    
+    // Add edit functionality to note
+    const editableText = noteContainer.querySelector('.editable-text');
+    if (editableText) {
+        let originalValue = editableText.textContent.trim();
+        
+        editableText.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (!editableText.isContentEditable) {
+                originalValue = editableText.textContent.trim();
+                editableText.contentEditable = 'true';
+                editableText.classList.add('editing');
+                editableText.focus();
+                
+                // Remove placeholder class
+                editableText.classList.remove('prospect-note-placeholder');
+            }
+        });
+        
+        editableText.addEventListener('blur', async () => {
+            if (editableText.isContentEditable) {
+                editableText.contentEditable = 'false';
+                editableText.classList.remove('editing');
+                
+                const newValue = editableText.textContent.trim();
+                
+                // If value changed, update in Supabase
+                if (newValue !== originalValue && newValue !== 'Aucune note personnelle pour le moment.') {
+                    const fieldName = editableText.getAttribute('data-field');
+                    const prospectId = editableText.getAttribute('data-prospect-id');
+                    
+                    // Update in Supabase
+                    await updateProspectField(prospectId, fieldName, newValue);
+                    
+                    // Update local data
+                    const prospect = allProspects.find(p => p.id == prospectId);
+                    if (prospect) {
+                        prospect[fieldName] = newValue;
+                    }
+                    
+                    // Add placeholder class if empty
+                    if (!newValue) {
+                        editableText.textContent = 'Aucune note personnelle pour le moment.';
+                        editableText.classList.add('prospect-note-placeholder');
+                    }
+                } else if (!newValue || newValue === 'Aucune note personnelle pour le moment.') {
+                    editableText.textContent = 'Aucune note personnelle pour le moment.';
+                    editableText.classList.add('prospect-note-placeholder');
+                } else {
+                    editableText.textContent = originalValue;
+                }
+            }
+        });
+        
+        editableText.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && editableText.isContentEditable) {
+                e.preventDefault();
+                editableText.textContent = originalValue;
+                if (!originalValue || originalValue === 'Aucune note personnelle pour le moment.') {
+                    editableText.classList.add('prospect-note-placeholder');
+                }
+                editableText.contentEditable = 'false';
+                editableText.classList.remove('editing');
+            }
+        });
+    }
 }
 
 // Fill prospect summary
 function fillProspectSummary(prospect) {
     const summary = document.getElementById('prospectSummary');
     const notes = prospect.notes || '';
+    const prospectId = prospect.id;
     
     if (notes) {
-        summary.innerHTML = `<p>${notes}</p>`;
+        summary.innerHTML = `<p class="editable-text" data-field="notes" data-prospect-id="${prospectId}" contenteditable="false">${notes}</p>`;
     } else {
-        summary.innerHTML = '<p class="prospect-summary-placeholder">Aucun résumé disponible pour le moment.</p>';
+        summary.innerHTML = `<p class="editable-text prospect-summary-placeholder" data-field="notes" data-prospect-id="${prospectId}" contenteditable="false">Aucun résumé disponible pour le moment.</p>`;
+    }
+    
+    // Add edit functionality to summary
+    const editableText = summary.querySelector('.editable-text');
+    if (editableText) {
+        let originalValue = editableText.textContent.trim();
+        
+        editableText.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (!editableText.isContentEditable) {
+                originalValue = editableText.textContent.trim();
+                editableText.contentEditable = 'true';
+                editableText.classList.add('editing');
+                editableText.focus();
+                
+                // Remove placeholder class
+                editableText.classList.remove('prospect-summary-placeholder');
+            }
+        });
+        
+        editableText.addEventListener('blur', async () => {
+            if (editableText.isContentEditable) {
+                editableText.contentEditable = 'false';
+                editableText.classList.remove('editing');
+                
+                const newValue = editableText.textContent.trim();
+                
+                // If value changed, update in Supabase
+                if (newValue !== originalValue && newValue !== 'Aucun résumé disponible pour le moment.') {
+                    const fieldName = editableText.getAttribute('data-field');
+                    const prospectId = editableText.getAttribute('data-prospect-id');
+                    
+                    // Update in Supabase
+                    await updateProspectField(prospectId, fieldName, newValue);
+                    
+                    // Update local data
+                    const prospect = allProspects.find(p => p.id == prospectId);
+                    if (prospect) {
+                        prospect[fieldName] = newValue;
+                    }
+                    
+                    // Add placeholder class if empty
+                    if (!newValue) {
+                        editableText.textContent = 'Aucun résumé disponible pour le moment.';
+                        editableText.classList.add('prospect-summary-placeholder');
+                    }
+                } else if (!newValue || newValue === 'Aucun résumé disponible pour le moment.') {
+                    editableText.textContent = 'Aucun résumé disponible pour le moment.';
+                    editableText.classList.add('prospect-summary-placeholder');
+                } else {
+                    editableText.textContent = originalValue;
+                }
+            }
+        });
+        
+        editableText.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && editableText.isContentEditable) {
+                e.preventDefault();
+                editableText.textContent = originalValue;
+                if (!originalValue || originalValue === 'Aucun résumé disponible pour le moment.') {
+                    editableText.classList.add('prospect-summary-placeholder');
+                }
+                editableText.contentEditable = 'false';
+                editableText.classList.remove('editing');
+            }
+        });
     }
 }
 
 // Fill prospect activities
 function fillProspectActivities(prospect) {
     const activities = document.getElementById('prospectActivities');
+    const prospectId = prospect.id;
     // Placeholder - à remplir avec les données réelles plus tard
-    activities.innerHTML = '<p class="prospect-activities-placeholder">Aucune activité renseignée pour le moment.</p>';
+    activities.innerHTML = `<p class="editable-text prospect-activities-placeholder" data-field="activities" data-prospect-id="${prospectId}" contenteditable="false">Aucune activité renseignée pour le moment.</p>`;
+    
+    // Add edit functionality to activities
+    const editableText = activities.querySelector('.editable-text');
+    if (editableText) {
+        let originalValue = editableText.textContent.trim();
+        
+        editableText.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (!editableText.isContentEditable) {
+                originalValue = editableText.textContent.trim();
+                editableText.contentEditable = 'true';
+                editableText.classList.add('editing');
+                editableText.focus();
+                
+                // Remove placeholder class
+                editableText.classList.remove('prospect-activities-placeholder');
+            }
+        });
+        
+        editableText.addEventListener('blur', async () => {
+            if (editableText.isContentEditable) {
+                editableText.contentEditable = 'false';
+                editableText.classList.remove('editing');
+                
+                const newValue = editableText.textContent.trim();
+                
+                // If value changed, update in Supabase (if activities field exists)
+                if (newValue !== originalValue && newValue !== 'Aucune activité renseignée pour le moment.') {
+                    const fieldName = editableText.getAttribute('data-field');
+                    const prospectId = editableText.getAttribute('data-prospect-id');
+                    
+                    // Note: activities field might not exist in database, so we'll use notes or create a custom field
+                    // For now, we'll skip the update if field doesn't exist
+                    // await updateProspectField(prospectId, fieldName, newValue);
+                } else if (!newValue || newValue === 'Aucune activité renseignée pour le moment.') {
+                    editableText.textContent = 'Aucune activité renseignée pour le moment.';
+                    editableText.classList.add('prospect-activities-placeholder');
+                } else {
+                    editableText.textContent = originalValue;
+                }
+            }
+        });
+        
+        editableText.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && editableText.isContentEditable) {
+                e.preventDefault();
+                editableText.textContent = originalValue;
+                if (!originalValue || originalValue === 'Aucune activité renseignée pour le moment.') {
+                    editableText.classList.add('prospect-activities-placeholder');
+                }
+                editableText.contentEditable = 'false';
+                editableText.classList.remove('editing');
+            }
+        });
+    }
+}
+
+// Update prospect field in Supabase
+async function updateProspectField(prospectId, fieldName, newValue) {
+    try {
+        if (typeof window.supabaseClient === 'undefined') {
+            console.error('Supabase client not available');
+            return;
+        }
+        
+        // Map field names to database column names
+        const fieldMapping = {
+            'first_name': 'first_name',
+            'last_name': 'last_name',
+            'email': 'email',
+            'phone': 'phone',
+            'society': 'society',
+            'role': 'role',
+            'notes': 'notes',
+            'note': 'note',
+            'linkedin': 'linkedin'
+        };
+        
+        const dbFieldName = fieldMapping[fieldName];
+        if (!dbFieldName) {
+            console.error('Unknown field name:', fieldName);
+            return;
+        }
+        
+        // Update in Supabase
+        const { data, error } = await window.supabaseClient
+            .from('crm_prospects')
+            .update({ [dbFieldName]: newValue === '-' ? null : newValue })
+            .eq('id', prospectId)
+            .select();
+        
+        if (error) {
+            console.error('Error updating prospect field:', error);
+            alert('Erreur lors de la mise à jour : ' + error.message);
+            return;
+        }
+        
+        console.log('Field updated successfully:', { fieldName, newValue });
+        
+        // Reload prospects list to sync
+        loadProspects();
+    } catch (error) {
+        console.error('Error in updateProspectField:', error);
+        alert('Une erreur est survenue lors de la mise à jour');
+    }
 }
 
 // Fill prospect timeline with call history
-function fillProspectTimeline(prospectId) {
+async function fillProspectTimeline(prospectId) {
     const timeline = document.getElementById('prospectTimeline');
-    
-    // Placeholder data - à remplir avec les vraies données d'appels plus tard
-    // Status: 'contacte' (rouge), 'pas_repondu' (orange), 'neutre_repondu' (bleu), 'rdv_planifie' (vert)
-    const mockCalls = [
-        {
-            date: new Date('2025-01-20T10:00:00'),
-            title: 'RDV planifié',
-            summary: 'Rendez-vous confirmé pour la semaine prochaine.',
-            duration: '10 min',
-            type: 'call',
-            status: 'rdv_planifie'
-        },
-        {
-            date: new Date('2025-01-18T14:30:00'),
-            title: 'Premier contact',
-            summary: 'Appel initial pour présenter nos services. Le prospect est intéressé par l\'automatisation.',
-            duration: '15 min',
-            type: 'call',
-            status: 'contacte'
-        },
-        {
-            date: new Date('2025-01-17T10:00:00'),
-            title: 'Suivi',
-            summary: 'Rappel pour discuter des besoins spécifiques. Le prospect a répondu de manière neutre.',
-            duration: '8 min',
-            type: 'call',
-            status: 'neutre_repondu'
-        },
-        {
-            date: new Date('2025-01-16T16:00:00'),
-            title: 'Tentative de contact',
-            summary: 'Pas de réponse au téléphone. Relance prévue.',
-            duration: '-',
-            type: 'contact',
-            status: 'pas_repondu'
-        }
-    ];
+    if (!timeline) return;
 
-    if (mockCalls.length === 0) {
-        timeline.innerHTML = '<p class="prospect-timeline-empty">Aucun historique d\'appel pour le moment.</p>';
+    const setTimelineMessage = (message) => {
+        timeline.innerHTML = `<p class="prospect-timeline-empty">${message}</p>`;
+    };
+
+    timeline.innerHTML = '<div class="timeline-loading">Chargement de l\'historique...</div>';
+
+    if (typeof window.supabaseClient === 'undefined') {
+        setTimelineMessage('Historique indisponible : aucune connexion à la base de données.');
         return;
     }
 
-    // Sort by date (newest first)
-    mockCalls.sort((a, b) => b.date - a.date);
+    const rawUserId = window.currentUserId;
+    const numericUserId = typeof rawUserId === 'string' ? parseInt(rawUserId, 10) : rawUserId;
 
-    timeline.innerHTML = mockCalls.map(call => {
-        const dateStr = call.date.toLocaleDateString('fr-FR', { 
-            day: 'numeric', 
-            month: 'long', 
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
+    const escapeHTML = (value) => {
+        if (value === null || value === undefined) return '';
+        return String(value).replace(/[&<>"']/g, (char) => {
+            const escapeMap = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            };
+            return escapeMap[char] || char;
         });
-        
-        const isCall = call.type === 'call';
-        const status = call.status || 'neutre_repondu';
-        
-        // Determine status class based on call status
-        // New color scheme:
-        // - Grey = pas de réponse
-        // - Blue = réponse mais pas de RDV
-        // - Green = RDV planifié
-        let statusClass = 'timeline-item-status-blue'; // default (réponse mais pas de RDV)
-        if (status === 'rdv_planifie' || status === 'rdv' || status === 'planifie') {
-            statusClass = 'timeline-item-status-green'; // RDV planifié
-        } else if (status === 'pas_repondu' || status === 'no_response' || status === 'pas_reponse') {
-            statusClass = 'timeline-item-status-grey'; // Pas de réponse
-        } else if (status === 'neutre_repondu' || status === 'neutral' || status === 'repondu' || status === 'contacte' || status === 'contacted') {
-            statusClass = 'timeline-item-status-blue'; // Réponse mais pas de RDV
+    };
+
+    const formatCallDate = (value) => {
+        if (!value) return 'Date inconnue';
+        const parsed = new Date(value);
+        if (Number.isNaN(parsed.getTime())) return 'Date inconnue';
+        const datePart = parsed.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+        const timePart = parsed.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+        return `${datePart} · ${timePart}`;
+    };
+
+    const formatCallDuration = (value) => {
+        if (value === null || value === undefined) return null;
+        const seconds = Number(value);
+        if (!Number.isFinite(seconds)) return null;
+        if (seconds <= 0) return '0s';
+        const minutes = Math.floor(seconds / 60);
+        const remaining = Math.round(seconds % 60);
+        if (minutes === 0) return `${remaining}s`;
+        if (remaining === 0) return `${minutes} min`;
+        return `${minutes} min ${remaining}s`;
+    };
+
+    const getDepositLabel = (type) => {
+        if (!type) return null;
+        switch (type) {
+            case 'recorded':
+                return { label: 'Enregistrement déposé', badgeClass: 'badge-recorded' };
+            case 'not_recorded':
+                return { label: 'Sans enregistrement', badgeClass: 'badge-not-recorded' };
+            case 'no_contact':
+                return { label: 'Aucun contact', badgeClass: 'badge-no-contact' };
+            default:
+                return { label: escapeHTML(type), badgeClass: '' };
         }
-        
-        const timelineItemClass = `timeline-item ${statusClass}`;
-        
-        // Determine icon based on status
-        let iconName = 'phone';
-        if (status === 'pas_repondu' || status === 'no_response' || status === 'pas_reponse') {
-            iconName = 'phone-off';
-        } else if (!isCall) {
-            iconName = 'phone-off';
+    };
+
+    const resolveStatusClass = (call, durationValue) => {
+        const depositType = (call.deposit_type || '').toLowerCase();
+        const resumeText = (call.resume || '').toLowerCase();
+        const titleText = (call.title || '').toLowerCase();
+        const noteText = (call.personal_note || '').toLowerCase();
+
+        if (
+            depositType === 'recorded' ||
+            titleText.includes('rdv') ||
+            resumeText.includes('rdv') ||
+            noteText.includes('rdv')
+        ) {
+            return 'timeline-item-status-green';
         }
+
+        if (
+            depositType === 'no_contact' ||
+            depositType === 'not_recorded' ||
+            durationValue === 0 ||
+            resumeText.includes('pas de réponse') ||
+            resumeText.includes('pas de reponse') ||
+            titleText.includes('pas de réponse') ||
+            titleText.includes('pas de reponse')
+        ) {
+            return 'timeline-item-status-grey';
+        }
+
+        return 'timeline-item-status-blue';
+    };
+
+    const resolveIconName = (statusClass) => {
+        if (statusClass === 'timeline-item-status-green') return 'check-circle';
+        if (statusClass === 'timeline-item-status-grey') return 'phone-off';
+        return 'phone';
+    };
+
+    try {
+        let query = window.supabaseClient
+            .from('crm_calls')
+            .select('id, date, title, resume, personal_note, duration, deposit_type, temperature, user_id')
+            .eq('prospect_id', prospectId)
+            .order('date', { ascending: false, nullsLast: true });
+
+        if (!Number.isNaN(numericUserId) && numericUserId !== null && numericUserId !== undefined) {
+            query = query.eq('user_id', numericUserId);
+        }
+
+        let { data: calls, error } = await query;
+
+        if (
+            !error &&
+            (!calls || calls.length === 0) &&
+            !Number.isNaN(numericUserId) && numericUserId !== null && numericUserId !== undefined
+        ) {
+            const { data: callsStringUser, error: stringUserError } = await window.supabaseClient
+                .from('crm_calls')
+                .select('id, date, title, resume, personal_note, duration, deposit_type, temperature, user_id')
+                .eq('prospect_id', prospectId)
+                .eq('user_id', numericUserId.toString())
+                .order('date', { ascending: false, nullsLast: true });
+
+            if (!stringUserError && callsStringUser) {
+                calls = callsStringUser;
+            }
+
+            if (stringUserError) {
+                error = stringUserError;
+            }
+        }
+
+        if (error) {
+            throw error;
+        }
+
+        if (!calls || calls.length === 0) {
+            setTimelineMessage('Aucun historique d\'appel pour le moment.');
+            return;
+        }
+
+        const timelineItems = calls.map((call) => {
+            const callDate = formatCallDate(call.date);
+            const durationValue = call.duration !== undefined && call.duration !== null ? Number(call.duration) : null;
+            const formattedDuration = formatCallDuration(durationValue);
+            const statusClass = resolveStatusClass(call, durationValue);
+            const iconName = resolveIconName(statusClass);
+            const title = escapeHTML(call.title) || 'Appel téléphonique';
+            const summary = escapeHTML(call.resume);
+            const personalNote = escapeHTML(call.personal_note);
+            const temperatureValue = call.temperature !== undefined && call.temperature !== null ? Number(call.temperature) : null;
+            const depositInfo = getDepositLabel(call.deposit_type);
+
+            const summaryHTML = summary ? `<p class="timeline-item-summary">${summary}</p>` : '';
+            const noteHTML = personalNote ? `<p class="timeline-item-summary timeline-item-note">Note BDR : ${personalNote}</p>` : '';
+
+            const badges = [];
+            if (depositInfo && depositInfo.label) {
+                badges.push(`<span class="timeline-item-badge ${depositInfo.badgeClass}">${depositInfo.label}</span>`);
+            }
+            if (Number.isFinite(temperatureValue)) {
+                badges.push(`<span class="timeline-item-badge badge-temperature">Température ${temperatureValue}/100</span>`);
+            }
+
+            const metaBadges = badges.length > 0 ? `<div class="timeline-item-meta">${badges.join('')}</div>` : '';
+            const durationHTML = formattedDuration ? `<span class="timeline-item-duration">${formattedDuration}</span>` : '';
         
         return `
-            <div class="${timelineItemClass}">
+                <div class="timeline-item ${statusClass}">
                 <div class="timeline-item-marker">
                     <i data-lucide="${iconName}"></i>
                 </div>
                 <div class="timeline-item-content">
                     <div class="timeline-item-header">
-                        <span class="timeline-item-date">${dateStr}</span>
-                        ${isCall ? `<span class="timeline-item-duration">${call.duration}</span>` : '<span class="timeline-item-badge">Pas d\'appel</span>'}
+                            <span class="timeline-item-date">${callDate}</span>
+                            ${durationHTML}
                     </div>
-                    <h5 class="timeline-item-title">${call.title}</h5>
-                    <p class="timeline-item-summary">${call.summary}</p>
+                        <h5 class="timeline-item-title">${title}</h5>
+                        ${summaryHTML}
+                        ${noteHTML}
+                        ${metaBadges}
                 </div>
             </div>
         `;
     }).join('');
 
-    // Reinitialize icons
+        timeline.innerHTML = timelineItems;
+
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();
+        }
+    } catch (error) {
+        console.error('Error loading prospect call history:', error);
+        setTimelineMessage('Impossible de charger l\'historique des appels.');
     }
 }
 
@@ -973,6 +2670,7 @@ async function submitAddProspect() {
     const phone = document.getElementById('prospectPhone').value.trim();
     const society = document.getElementById('prospectSociety').value.trim();
     const role = document.getElementById('prospectRole').value.trim();
+    const linkedin = document.getElementById('prospectLinkedin')?.value.trim() || '';
     
     // Basic validation
     if (!firstName || !lastName) {
@@ -993,6 +2691,17 @@ async function submitAddProspect() {
         submitBtn.innerHTML = 'Ajout en cours...';
         
         try {
+            // Check if user ID is available
+            if (!window.currentUserId) {
+                alert('Erreur : ID utilisateur non disponible. Veuillez vous reconnecter.');
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalText;
+                if (typeof lucide !== 'undefined') {
+                    lucide.createIcons();
+                }
+                return;
+            }
+            
             // Insert prospect into database (without specifying id - let Supabase auto-generate)
             const { data, error } = await window.supabaseClient
                 .from('crm_prospects')
@@ -1004,19 +2713,47 @@ async function submitAddProspect() {
                         phone: phone || null,
                         society: society || null,
                         role: role || null,
-                        called: false
+                        linkedin: linkedin || null,
+                        called: false,
+                        user_id: window.currentUserId
                     }
                 ])
                 .select();
             
             if (error) {
                 console.error('Error adding prospect:', error);
+                console.error('Error code:', error.code);
+                console.error('Error message:', error.message);
+                console.error('Error details:', error.details);
+                console.error('Error hint:', error.hint);
                 
-                // Handle duplicate key error specifically
-                if (error.code === '23505' || error.message.includes('duplicate key') || error.message.includes('unique constraint')) {
-                    alert('Ce prospect existe déjà dans la base de données. Veuillez vérifier les informations saisies.');
+                // Handle duplicate key error specifically - only for PostgreSQL error code 23505
+                // Check if it's a unique constraint error
+                const isUniqueConstraint = error.code === '23505';
+                
+                if (isUniqueConstraint) {
+                    // Check which field has the duplicate
+                    let fieldName = 'un champ';
+                    const errorMsg = error.message ? error.message.toLowerCase() : '';
+                    
+                    if (errorMsg.includes('email')) {
+                        fieldName = 'cet email';
+                    } else if (errorMsg.includes('phone') || errorMsg.includes('téléphone')) {
+                        fieldName = 'ce numéro de téléphone';
+                    } else if (errorMsg.includes('pkey') || errorMsg.includes('primary key')) {
+                        // This shouldn't happen if ID is auto-generated, but handle it anyway
+                        alert('Erreur : Un problème est survenu avec l\'ID du prospect. Veuillez réessayer.');
+                    } else {
+                        // Generic unique constraint error
+                        fieldName = 'ces informations';
+                    }
+                    
+                    if (!errorMsg.includes('pkey') && !errorMsg.includes('primary key')) {
+                        alert(`Un prospect avec ${fieldName} existe déjà dans la base de données. Veuillez vérifier les informations saisies.`);
+                    }
                 } else {
-                    alert('Erreur lors de l\'ajout du prospect : ' + error.message);
+                    // Show the actual error message for other errors
+                    alert('Erreur lors de l\'ajout du prospect : ' + (error.message || 'Erreur inconnue'));
                 }
                 
                 // Re-enable button on error
@@ -1050,6 +2787,12 @@ async function submitAddProspect() {
     } else {
         // Fallback if button not found
         try {
+            // Check if user ID is available
+            if (!window.currentUserId) {
+                alert('Erreur : ID utilisateur non disponible. Veuillez vous reconnecter.');
+                return;
+            }
+            
             const { data, error } = await window.supabaseClient
                 .from('crm_prospects')
                 .insert([
@@ -1060,17 +2803,47 @@ async function submitAddProspect() {
                         phone: phone || null,
                         society: society || null,
                         role: role || null,
-                        called: false
+                        linkedin: linkedin || null,
+                        called: false,
+                        user_id: window.currentUserId
                     }
                 ])
                 .select();
             
             if (error) {
                 console.error('Error adding prospect:', error);
-                if (error.code === '23505' || error.message.includes('duplicate key') || error.message.includes('unique constraint')) {
-                    alert('Ce prospect existe déjà dans la base de données.');
+                console.error('Error code:', error.code);
+                console.error('Error message:', error.message);
+                console.error('Error details:', error.details);
+                console.error('Error hint:', error.hint);
+                
+                // Handle duplicate key error specifically - only for PostgreSQL error code 23505
+                // Check if it's a unique constraint error
+                const isUniqueConstraint = error.code === '23505';
+                
+                if (isUniqueConstraint) {
+                    // Check which field has the duplicate
+                    let fieldName = 'un champ';
+                    const errorMsg = error.message ? error.message.toLowerCase() : '';
+                    
+                    if (errorMsg.includes('email')) {
+                        fieldName = 'cet email';
+                    } else if (errorMsg.includes('phone') || errorMsg.includes('téléphone')) {
+                        fieldName = 'ce numéro de téléphone';
+                    } else if (errorMsg.includes('pkey') || errorMsg.includes('primary key')) {
+                        // This shouldn't happen if ID is auto-generated, but handle it anyway
+                        alert('Erreur : Un problème est survenu avec l\'ID du prospect. Veuillez réessayer.');
+                    } else {
+                        // Generic unique constraint error
+                        fieldName = 'ces informations';
+                    }
+                    
+                    if (!errorMsg.includes('pkey') && !errorMsg.includes('primary key')) {
+                        alert(`Un prospect avec ${fieldName} existe déjà dans la base de données.`);
+                    }
                 } else {
-                    alert('Erreur lors de l\'ajout du prospect : ' + error.message);
+                    // Show the actual error message for other errors
+                    alert('Erreur lors de l\'ajout du prospect : ' + (error.message || 'Erreur inconnue'));
                 }
                 return;
             }
@@ -1875,10 +3648,29 @@ async function loadDisponibilites() {
     
     if (!calendarContainer || !calendarLoading || !calendarView) return;
     
-    // Hide everything and show only spinner
-    if (calendarHeader) calendarHeader.style.display = 'none';
-    calendarView.style.display = 'none';
-    calendarLoading.style.display = 'flex';
+    // Hide everything and show only spinner (if not already done by nav click handler)
+    // Use visibility to hide content but keep layout, and set opacity to 0
+    if (calendarHeader && calendarHeader.style.visibility !== 'hidden') {
+        calendarHeader.style.visibility = 'hidden';
+        calendarHeader.style.opacity = '0';
+    }
+    if (calendarView.style.visibility !== 'hidden') {
+        calendarView.style.visibility = 'hidden';
+        calendarView.style.opacity = '0';
+    }
+    
+    // Remove border and overflow during loading (if not already done)
+    if (calendarContainer.style.border !== 'none') {
+        calendarContainer.style.border = 'none';
+    }
+    if (calendarContainer.style.overflow !== 'visible') {
+        calendarContainer.style.overflow = 'visible';
+    }
+    
+    // Show loading spinner with grey background (if not already shown)
+    if (calendarLoading.style.display !== 'flex') {
+        calendarLoading.style.display = 'flex';
+    }
     
     try {
         await loadICSFile();
@@ -1892,13 +3684,29 @@ async function loadDisponibilites() {
         
         // Hide loading and show calendar
         calendarLoading.style.display = 'none';
-        if (calendarHeader) calendarHeader.style.display = 'flex';
-        calendarView.style.display = 'block';
+        if (calendarHeader) {
+            calendarHeader.style.visibility = 'visible';
+            calendarHeader.style.opacity = '1';
+        }
+        calendarView.style.visibility = 'visible';
+        calendarView.style.opacity = '1';
+        
+        // Restore border after loading
+        calendarContainer.style.border = '1px solid #7b90ad';
+        calendarContainer.style.overflow = '';
     } catch (error) {
         console.error('Error loading disponibilites:', error);
         calendarLoading.style.display = 'none';
-        if (calendarHeader) calendarHeader.style.display = 'flex';
-        calendarView.style.display = 'block';
+        if (calendarHeader) {
+            calendarHeader.style.visibility = 'visible';
+            calendarHeader.style.opacity = '1';
+        }
+        calendarView.style.visibility = 'visible';
+        calendarView.style.opacity = '1';
+        
+        // Restore border after loading
+        calendarContainer.style.border = '1px solid #7b90ad';
+        calendarContainer.style.overflow = '';
     }
 }
 
@@ -2043,6 +3851,114 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Depot option radio buttons - update UI when selection changes
+    const depotRadioButtons = document.querySelectorAll('input[name="depotStatus"]');
+    depotRadioButtons.forEach(radio => {
+        radio.addEventListener('change', updateDepotOptionUI);
+    });
+
+    // Depot upload zone handlers
+    const depotUploadZone = document.querySelector('.depot-upload-zone');
+    const depotFileInput = document.getElementById('depotFileInput');
+    
+    if (depotUploadZone && depotFileInput) {
+        // Click to open file dialog (prevent event bubbling to label)
+        depotUploadZone.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent label click
+            if (e.target !== depotFileInput) {
+                depotFileInput.click();
+            }
+        });
+
+        // Drag and drop handlers
+        depotUploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.stopPropagation(); // Prevent label click
+            depotUploadZone.classList.add('dragover');
+        });
+
+        depotUploadZone.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            e.stopPropagation(); // Prevent label click
+            depotUploadZone.classList.remove('dragover');
+        });
+
+        depotUploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            e.stopPropagation(); // Prevent label click
+            depotUploadZone.classList.remove('dragover');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                depotFileInput.files = files;
+                // Trigger change event
+                const event = new Event('change', { bubbles: true });
+                depotFileInput.dispatchEvent(event);
+            }
+        });
+
+        // Validate audio file format
+        function isValidAudioFile(file) {
+            const allowedExtensions = ['.wav', '.mp3', '.aiff', '.aac', '.ogg', '.flac', '.m4a'];
+            const allowedMimeTypes = [
+                'audio/wav',
+                'audio/x-wav',
+                'audio/mpeg',
+                'audio/mp3',
+                'audio/x-aiff',
+                'audio/aiff',
+                'audio/aac',
+                'audio/x-aac',
+                'audio/ogg',
+                'audio/vorbis',
+                'audio/flac',
+                'audio/x-flac',
+                'audio/mp4',
+                'audio/x-m4a',
+                'audio/m4a'
+            ];
+            
+            // Check by extension
+            const fileName = file.name.toLowerCase();
+            const hasValidExtension = allowedExtensions.some(ext => fileName.endsWith(ext));
+            
+            // Check by MIME type
+            const hasValidMimeType = allowedMimeTypes.includes(file.type.toLowerCase());
+            
+            return hasValidExtension || hasValidMimeType;
+        }
+
+        // File input change handler
+        depotFileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                // Validate file format
+                if (!isValidAudioFile(file)) {
+                    alert('Format de fichier non accepté. Veuillez sélectionner un fichier audio au format WAV, MP3, AIFF, AAC, OGG Vorbis, FLAC ou M4A.');
+                    depotFileInput.value = '';
+                    const uploadText = depotUploadZone.querySelector('.depot-upload-text');
+                    if (uploadText) {
+                        uploadText.textContent = 'Cliquez pour téléverser ou glissez-déposez le fichier';
+                    }
+                    return;
+                }
+                
+                console.log('File selected:', file.name, file.type, file.size);
+                // Update upload zone text to show selected file
+                const uploadText = depotUploadZone.querySelector('.depot-upload-text');
+                if (uploadText) {
+                    uploadText.textContent = `Fichier sélectionné : ${file.name}`;
+                }
+            } else {
+                // Reset text if no file
+                const uploadText = depotUploadZone.querySelector('.depot-upload-text');
+                if (uploadText) {
+                    uploadText.textContent = 'Cliquez pour téléverser ou glissez-déposez le fichier';
+                }
+            }
+        });
+    }
+
     // Prospect details modal event listeners
     const prospectDetailsModal = document.getElementById('prospectDetailsModal');
     const closeProspectDetailsModal = document.getElementById('closeProspectDetailsModal');
@@ -2105,15 +4021,69 @@ document.addEventListener('DOMContentLoaded', () => {
             submitAddProspect();
         });
     }
+
+    // Record modal event listeners
+    const recordModal = document.getElementById('recordModal');
+    const closeRecordModal = document.getElementById('closeRecordModal');
+    const startRecordBtn = document.getElementById('startRecordBtn');
+    const stopRecordBtn = document.getElementById('stopRecordBtn');
+    const recordSourceBtn = document.getElementById('recordSourceBtn');
+    const recordSourceMenu = document.getElementById('recordSourceMenu');
+
+    if (closeRecordModal) {
+        closeRecordModal.addEventListener('click', hideRecordModal);
+    }
+
+    if (startRecordBtn) {
+        startRecordBtn.addEventListener('click', startRecording);
+    }
+
+    if (stopRecordBtn) {
+        stopRecordBtn.addEventListener('click', stopRecording);
+    }
+
+    // Source dropdown toggle
+    if (recordSourceBtn && recordSourceMenu) {
+        recordSourceBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const dropdown = recordSourceBtn.closest('.record-source-dropdown');
+            const isActive = dropdown?.classList.contains('active');
+            
+            if (isActive) {
+                dropdown.classList.remove('active');
+                recordSourceMenu.style.display = 'none';
+            } else {
+                dropdown?.classList.add('active');
+                recordSourceMenu.style.display = 'block';
+            }
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!recordSourceBtn.contains(e.target) && !recordSourceMenu.contains(e.target)) {
+                const dropdown = recordSourceBtn.closest('.record-source-dropdown');
+                dropdown?.classList.remove('active');
+                recordSourceMenu.style.display = 'none';
+            }
+        });
+    }
+
+    // Close record modal on overlay click
+    if (recordModal) {
+        recordModal.addEventListener('click', (e) => {
+            if (e.target === recordModal) {
+                hideRecordModal();
+            }
+        });
+    }
 });
 
 // Load calendar when disponibilités section is shown
 const disponibilitesLink = document.querySelector('[data-section="disponibilites"]');
 if (disponibilitesLink) {
     disponibilitesLink.addEventListener('click', () => {
-        setTimeout(() => {
-            loadDisponibilites();
-        }, 100);
+        // Load immediately, loading spinner is already shown in nav click handler
+        loadDisponibilites();
     });
 }
 

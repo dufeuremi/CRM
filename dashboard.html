@@ -87,25 +87,30 @@
             <div class="content-wrapper">
                 <!-- Dashboard Section -->
                 <section class="content-section active" id="dashboard">
-                    <!-- Mission reminder -->
-                    <div class="mission-reminder" id="missionReminder" style="display: none;">
-                        <div class="mission-icon">
-                            <i data-lucide="target"></i>
-                        </div>
-                        <div class="mission-content">
-                            <p class="mission-greeting" id="missionGreeting"></p>
-                            <p class="mission-text" id="missionText"></p>
-                        </div>
+                    <div class="dashboard-loading" id="dashboardLoading" style="display: flex;">
+                        <div class="loading-spinner"></div>
                     </div>
                     
-                    <div class="dashboard-grid">
+                    <div class="dashboard-content" id="dashboardContent" style="display: none;">
+                        <!-- Mission reminder -->
+                        <div class="mission-reminder" id="missionReminder" style="display: none;">
+                            <div class="mission-icon">
+                                <i data-lucide="target"></i>
+                            </div>
+                            <div class="mission-content">
+                                <p class="mission-greeting" id="missionGreeting"></p>
+                                <p class="mission-text" id="missionText"></p>
+                            </div>
+                        </div>
+                        
+                        <div class="dashboard-grid">
                         <div class="stat-card">
                             <div class="stat-icon">
                                 <i data-lucide="phone"></i>
                             </div>
                             <div class="stat-info">
-                                <h3>0</h3>
-                                <p>Appels aujourd'hui</p>
+                                <h3 id="callsThisWeek">0</h3>
+                                <p>Appels cette semaine</p>
                             </div>
                         </div>
                         <div class="stat-card">
@@ -113,8 +118,8 @@
                                 <i data-lucide="user-check"></i>
                             </div>
                             <div class="stat-info">
-                                <h3>0</h3>
-                                <p>Prospects contactés</p>
+                                <h3 id="totalContacts">0</h3>
+                                <p>Prospects contactés au total</p>
                             </div>
                         </div>
                         <div class="stat-card">
@@ -122,7 +127,7 @@
                                 <i data-lucide="calendar-check"></i>
                             </div>
                             <div class="stat-info">
-                                <h3>0</h3>
+                                <h3 id="bookedAppointments">0</h3>
                                 <p>RDV planifiés</p>
                             </div>
                         </div>
@@ -131,18 +136,26 @@
                                 <i data-lucide="trophy"></i>
                             </div>
                             <div class="stat-info">
-                                <h3>0%</h3>
+                                <h3 id="conversionRate">0%</h3>
                                 <p>Taux de conversion</p>
                             </div>
                         </div>
-                    </div>
-                    
-                    <!-- Graphique Chiffre d'affaires -->
-                    <div class="chart-container">
-                        <div class="chart-header">
-                            <h3>Chiffre d'affaires</h3>
                         </div>
-                        <canvas id="revenueChart"></canvas>
+                        
+                        <!-- Graphique Chiffre d'affaires -->
+                        <div class="chart-container">
+                            <div class="chart-header">
+                                <h3>Chiffre d'affaires</h3>
+                            </div>
+                            <div id="revenueChartEmpty" class="chart-empty-state" style="display: none;">
+                                <div class="chart-empty-icon">
+                                    <i data-lucide="trending-up"></i>
+                                </div>
+                                <h4>Commencez à générer du chiffre d'affaires !</h4>
+                                <p>Convertissez vos prospects en clients pour voir votre progression ici. Chaque conversion vous rapporte 250€.</p>
+                            </div>
+                            <canvas id="revenueChart"></canvas>
+                        </div>
                     </div>
                 </section>
 
@@ -206,13 +219,14 @@
                                         <th>Entreprise</th>
                                         <th>Téléphone</th>
                                         <th>Email</th>
+                                        <th>LinkedIn</th>
                                         <th>Statut</th>
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <tr>
-                                        <td colspan="6" class="empty-table">
+                                        <td colspan="7" class="empty-table">
                                             <i data-lucide="inbox"></i>
                                             <p>Aucun prospect pour le moment</p>
                                         </td>
@@ -298,6 +312,43 @@
         </main>
     </div>
 
+    <!-- Custom Alert Modal -->
+    <div id="customAlertModal" class="modal-overlay">
+        <div class="modal-content modal-content-small">
+            <div class="modal-header">
+                <h3 class="modal-title" id="customAlertTitle">Information</h3>
+                <button class="modal-close" id="closeCustomAlert">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p id="customAlertMessage"></p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" id="customAlertOk">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Confirm Modal -->
+    <div id="customConfirmModal" class="modal-overlay">
+        <div class="modal-content modal-content-small">
+            <div class="modal-header">
+                <h3 class="modal-title" id="customConfirmTitle">Confirmation</h3>
+                <button class="modal-close" id="closeCustomConfirm">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p id="customConfirmMessage"></p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="customConfirmCancel">Annuler</button>
+                <button class="btn btn-primary" id="customConfirmOk">Confirmer</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Confirmation Modal -->
     <div id="confirmModal" class="modal-overlay">
         <div class="modal-content">
@@ -328,25 +379,33 @@
             </div>
             <div class="modal-body">
                 <div class="depot-options">
-                    <label class="depot-option depot-option-highlight">
-                        <input type="radio" name="depotStatus" value="recorded" checked>
-                        <span class="depot-option-label">J'ai l'enregistrement</span>
-                    </label>
-                    <label class="depot-option">
+                    <label class="depot-option" data-value="not_recorded">
                         <input type="radio" name="depotStatus" value="not_recorded">
                         <span class="depot-option-label">Je n'ai pas pu enregistrer</span>
                     </label>
-                    <label class="depot-option">
+                    <label class="depot-option" data-value="no_contact">
                         <input type="radio" name="depotStatus" value="no_contact">
-                        <span class="depot-option-label">Je n'ai pas eu le prospect à deux reprises</span>
+                        <span class="depot-option-label">Aucun contact</span>
                     </label>
-                    <label class="depot-option">
-                        <input type="radio" name="depotStatus" value="other">
-                        <span class="depot-option-label">Autre</span>
+                    <label class="depot-option" data-value="recorded">
+                        <div class="depot-option-header">
+                            <input type="radio" name="depotStatus" value="recorded" checked>
+                            <span class="depot-option-label">J'ai l'enregistrement</span>
+                        </div>
+                        <div class="depot-upload-container" id="depotUploadContainer">
+                            <div class="depot-upload-zone">
+                                <input type="file" id="depotFileInput" accept=".wav,.mp3,.aiff,.aac,.ogg,.flac,.m4a,audio/wav,audio/mpeg,audio/mp3,audio/x-aiff,audio/aac,audio/ogg,audio/flac,audio/mp4,audio/x-m4a" style="display: none;">
+                                <div class="depot-upload-content">
+                                    <i data-lucide="upload" class="depot-upload-icon"></i>
+                                    <p class="depot-upload-text">Cliquez pour téléverser ou glissez-déposez le fichier</p>
+                                    <p class="depot-upload-hint">Formats acceptés : WAV, MP3, M4A</p>
+                                </div>
+                            </div>
+                        </div>
                     </label>
                 </div>
                 <div class="depot-datetime">
-                    <label for="depotDateTime" class="depot-datetime-label">Date et heure de l'enregistrement</label>
+                    <label for="depotDateTime" class="depot-datetime-label">Date et heure de l'évènement</label>
                     <input type="datetime-local" id="depotDateTime" class="depot-datetime-input">
                 </div>
                 <div class="depot-note">
@@ -396,6 +455,10 @@
                         <label for="prospectRole" class="form-label">Rôle</label>
                         <input type="text" id="prospectRole" class="form-input" required>
                     </div>
+                    <div class="form-group">
+                        <label for="prospectLinkedin" class="form-label">LinkedIn</label>
+                        <input type="url" id="prospectLinkedin" class="form-input" placeholder="https://linkedin.com/in/...">
+                    </div>
                 </form>
             </div>
             <div class="modal-footer">
@@ -405,11 +468,60 @@
         </div>
     </div>
 
+    <!-- Record Modal -->
+    <div id="recordModal" class="record-modal-overlay">
+        <div class="record-modal-content">
+            <div class="record-prospect-name" id="recordProspectName"></div>
+            
+            <div class="record-source-dropdown">
+                <button class="record-source-btn" id="recordSourceBtn">
+                    <span id="recordSourceText">Source</span>
+                    <i data-lucide="chevron-down"></i>
+                </button>
+                <div class="record-source-menu" id="recordSourceMenu" style="display: none;">
+                    <label class="record-source-menu-item">
+                        <input type="radio" name="recordSource" value="microphone" checked>
+                        <i data-lucide="mic"></i>
+                        <span>Microphone</span>
+                    </label>
+                    <label class="record-source-menu-item">
+                        <input type="radio" name="recordSource" value="system">
+                        <i data-lucide="speaker"></i>
+                        <span>Sortie audio</span>
+                    </label>
+                </div>
+            </div>
+            
+            <div class="record-waveform-container">
+                <div class="record-waveform" id="recordWaveform">
+                    <!-- Waveform bars will be generated dynamically -->
+                </div>
+            </div>
+            
+            <div class="record-timer" id="recordTimer">00:00</div>
+            
+            <div class="record-buttons-group">
+                <button class="record-btn-play" id="startRecordBtn" title="Démarrer l'enregistrement">
+                    <i data-lucide="play"></i>
+                </button>
+                <button class="record-btn-stop" id="stopRecordBtn" style="display: none;" title="Arrêter l'enregistrement">
+                    <i data-lucide="square"></i>
+                </button>
+                <button class="record-btn-close" id="closeRecordModal" title="Fermer">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Prospect Details Modal -->
     <div id="prospectDetailsModal" class="modal-overlay">
         <div class="modal-content modal-content-large">
             <div class="modal-header">
                 <h3 class="modal-title" id="prospectDetailsTitle">Détails du prospect</h3>
+                <div class="modal-header-actions" id="prospectDetailsHeaderActions">
+                    <!-- Buttons will be added dynamically -->
+                </div>
                 <button class="modal-close" id="closeProspectDetailsModal">
                     <i data-lucide="x"></i>
                 </button>
@@ -420,6 +532,14 @@
                     <h4 class="prospect-section-title">Informations</h4>
                     <div class="prospect-info-grid" id="prospectInfoGrid">
                         <!-- Rempli dynamiquement -->
+                    </div>
+                </div>
+
+                <!-- Note personnelle -->
+                <div class="prospect-details-section">
+                    <h4 class="prospect-section-title">Note personnelle</h4>
+                    <div class="prospect-note" id="prospectNote">
+                        <p class="prospect-note-placeholder">Aucune note personnelle pour le moment.</p>
                     </div>
                 </div>
 
@@ -481,7 +601,7 @@
                 // Get user data from users table using UUID
                 const { data: userData, error } = await supabase
                     .from('users')
-                    .select('first_name, last_name, email, avatar_url, role, mission')
+                    .select('id, first_name, last_name, email, avatar_url, role, mission')
                     .eq('uuid', authUser.id)
                     .single();
 
@@ -493,6 +613,9 @@
                 }
 
                 if (userData) {
+                    // Store user ID globally for use in prospects
+                    window.currentUserId = userData.id;
+                    
                     // Update user display with data from users table
                     const fullName = userData.first_name && userData.last_name 
                         ? `${userData.first_name} ${userData.last_name}`
