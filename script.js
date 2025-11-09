@@ -218,9 +218,9 @@ function switchToSection(sectionId) {
                 'dashboard': 'Dashboard',
                 'analytics': 'Analytics',
                 'disponibilites': 'Disponibilités',
-                'rappels': 'Rappels',
+                'rappels': 'Relances',
                 'historique': 'Historique des appels',
-                'prospects': 'Prospects',
+                'prospects': 'Prospection',
                 'script': 'Script',
                 'presentation': 'Présentation'
             };
@@ -1870,17 +1870,6 @@ function createProspectRow(prospect, isArchived = false) {
         firmDisplay = '<small>(entreprise non trouvée)</small>';
     }
     
-    // Format role
-    const role = prospect.role || '-';
-    
-    // Format LinkedIn - show icon only if LinkedIn exists
-    const linkedin = prospect.linkedin || '';
-    const linkedinIcon = linkedin 
-        ? `<a href="${linkedin}" target="_blank" rel="noopener noreferrer" class="linkedin-link" title="Voir le profil LinkedIn" onclick="event.stopPropagation();">
-            <i data-lucide="external-link"></i>
-        </a>`
-        : '-';
-    
     // Check if prospect has been called
     const called = prospect.called === true || prospect.called === 'true';
     const calledIcon = called 
@@ -1938,8 +1927,6 @@ function createProspectRow(prospect, isArchived = false) {
         <td>${firmDisplay}</td>
         <td>${phone}</td>
         <td>${email}</td>
-        <td>${linkedinIcon}</td>
-        <td><span class="status-badge">${role}</span></td>
         <td>
             <button class="btn-icon btn-record" title="🎙️ Enregistrer l'appel - Lance l'enregistrement audio de votre conversation" data-prospect-id="${prospect.id}">
                 <i data-lucide="mic"></i>
@@ -1947,7 +1934,7 @@ function createProspectRow(prospect, isArchived = false) {
             <button class="btn-icon btn-confirm btn-depot" title="📤 Dépôt/Confirmation - Valider l'appel et uploader l'enregistrement" data-prospect-id="${prospect.id}">
                 <i data-lucide="upload"></i>
             </button>
-            <button class="btn-icon btn-invite" title="📧 Invitation RDV - Envoyer la présentation ou l'invitation Teams" data-prospect-id="${prospect.id}">
+            <button class="btn-icon btn-invite" title="📧 Invitation RDV - Envoyer la présentation ou l'invitation Teams" data-prospect-id="${prospect.id}" style="display: none;">
                 <i data-lucide="mail"></i>
             </button>
             ${archiveButton}
@@ -2249,8 +2236,7 @@ function showRecordModal(prospectId) {
     
     // Reset UI
     document.getElementById('recordTimer').textContent = '00:00';
-    document.getElementById('startRecordBtn').style.display = 'flex';
-    document.getElementById('stopRecordBtn').style.display = 'none';
+    document.getElementById('stopRecordBtn').style.display = 'flex';
     
     // Reset source selection
     const microphoneRadio = document.querySelector('input[name="recordSource"][value="microphone"]');
@@ -2276,6 +2262,17 @@ function showRecordModal(prospectId) {
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();
     }
+    
+    // Start recording automatically
+    setTimeout(async () => {
+        try {
+            await startRecording();
+        } catch (error) {
+            console.error('Failed to start recording:', error);
+            hideRecordModal();
+            showToast('Impossible de démarrer l\'enregistrement. Vérifiez vos permissions.', 'error');
+        }
+    }, 300);
     
     // Add event listeners for source selection
     document.querySelectorAll('input[name="recordSource"]').forEach(radio => {
@@ -2307,15 +2304,26 @@ function updateSourceText() {
 function hideRecordModal() {
     const modal = document.getElementById('recordModal');
     modal.classList.remove('active');
+    modal.classList.remove('recording-active');
     currentRecordProspectId = null;
     
-    // Stop recording if active
-    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-        stopRecording();
+    // Only stop recording if it's still active (not already stopping)
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+        console.log('hideRecordModal: stopping active recording');
+        mediaRecorder.stop();
     }
     
     // Stop waveform
     stopWaveform();
+    
+    // Stop timer
+    stopRecordTimer();
+    
+    // Clean up streams
+    if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
+        currentStream = null;
+    }
 }
 
 // Start recording
@@ -2388,6 +2396,11 @@ async function startRecording() {
         };
         
         mediaRecorder.onstop = () => {
+            console.log('MediaRecorder onstop event triggered');
+            
+            // Save prospect ID before anything else (will be reset by hideRecordModal)
+            const prospectId = currentRecordProspectId;
+            
             const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
             const audioUrl = URL.createObjectURL(audioBlob);
             
@@ -2397,11 +2410,13 @@ async function startRecording() {
             const durationSeconds = duration % 60;
             const durationFormatted = `${String(durationMinutes).padStart(2, '0')}:${String(durationSeconds).padStart(2, '0')}`;
             
+            console.log('Recording duration:', durationFormatted);
+            
             // Store recording in localStorage with metadata
-            const recordingId = `recording_${Date.now()}_${currentRecordProspectId}`;
+            const recordingId = `recording_${Date.now()}_${prospectId}`;
             const recordingData = {
                 id: recordingId,
-                prospectId: currentRecordProspectId,
+                prospectId: prospectId,
                 blob: audioBlob,
                 url: audioUrl,
                 mimeType: mediaRecorder.mimeType,
@@ -2414,6 +2429,7 @@ async function startRecording() {
             // Store in localStorage (convert blob to base64 for storage)
             const reader = new FileReader();
             reader.onloadend = () => {
+                console.log('Base64 conversion complete');
                 const base64data = reader.result;
                 const storageData = {
                     ...recordingData,
@@ -2423,9 +2439,11 @@ async function startRecording() {
                 localStorage.setItem(recordingId, JSON.stringify(storageData));
                 
                 // Store reference in prospect recordings
-                const prospectRecordings = JSON.parse(localStorage.getItem(`prospect_${currentRecordProspectId}_recordings`) || '[]');
+                const prospectRecordings = JSON.parse(localStorage.getItem(`prospect_${prospectId}_recordings`) || '[]');
                 prospectRecordings.push(recordingId);
-                localStorage.setItem(`prospect_${currentRecordProspectId}_recordings`, JSON.stringify(prospectRecordings));
+                localStorage.setItem(`prospect_${prospectId}_recordings`, JSON.stringify(prospectRecordings));
+                
+                console.log('Recording saved to localStorage');
                 
                 // Check if format is compatible with API
                 const mimeType = mediaRecorder.mimeType;
@@ -2440,34 +2458,42 @@ async function startRecording() {
                     showToast('Format d\'enregistrement non optimal. Le fichier pourrait nécessiter une conversion.', 'warning');
                 }
                 
-                // Hide record modal first
-                hideRecordModal();
+                // Stop all tracks before hiding modal
+                if (currentStream) {
+                    currentStream.getTracks().forEach(track => track.stop());
+                    currentStream = null;
+                }
+                
+                // Hide record modal
+                const modal = document.getElementById('recordModal');
+                if (modal) {
+                    modal.classList.remove('active');
+                    modal.classList.remove('recording-active');
+                }
+                
+                console.log('Opening depot modal with recording for prospect:', prospectId);
                 
                 // Open depot modal with recording option (pass data with blob for immediate use)
                 // Use setTimeout to ensure modal is fully hidden before showing depot modal
                 setTimeout(() => {
-                    openDepotWithRecording(currentRecordProspectId, {
+                    openDepotWithRecording(prospectId, {
                         ...recordingData,
                         base64: base64data
                     });
-                }, 200);
+                }, 250);
             };
             reader.readAsDataURL(audioBlob);
-            
-            // Stop all tracks
-            if (currentStream) {
-                currentStream.getTracks().forEach(track => track.stop());
-                currentStream = null;
-            }
         };
         
         // Start recording
         recordStartTime = Date.now();
         mediaRecorder.start();
         
-        // Update UI
-        document.getElementById('startRecordBtn').style.display = 'none';
-        document.getElementById('stopRecordBtn').style.display = 'flex';
+        // Add recording class to modal for visual feedback
+        const recordModal = document.getElementById('recordModal');
+        if (recordModal) {
+            recordModal.classList.add('recording-active');
+        }
         
         // Start timer
         startRecordTimer();
@@ -2475,9 +2501,24 @@ async function startRecording() {
         // Start waveform animation
         waveformInterval = setInterval(updateWaveform, 50);
         
+        console.log('Recording started successfully');
+        console.log('MediaRecorder state:', mediaRecorder.state);
+        
     } catch (error) {
         console.error('Error starting recording:', error);
-        alert('Erreur lors du démarrage de l\'enregistrement : ' + error.message);
+        
+        // Clean up on error
+        if (currentStream) {
+            currentStream.getTracks().forEach(track => track.stop());
+            currentStream = null;
+        }
+        if (audioContext) {
+            audioContext.close();
+            audioContext = null;
+        }
+        
+        // Rethrow error to be caught by caller
+        throw error;
     }
 }
 
@@ -2488,29 +2529,54 @@ function stopRecording() {
     console.log('MediaRecorder state:', mediaRecorder ? mediaRecorder.state : 'no mediaRecorder');
     
     if (!mediaRecorder) {
-        console.error('No mediaRecorder available');
-        alert('Erreur: Aucun enregistrement en cours');
+        console.error('No mediaRecorder available - recording may not have started');
+        
+        // Clean up any remaining resources
+        stopRecordTimer();
+        stopWaveform();
+        
+        if (currentStream) {
+            currentStream.getTracks().forEach(track => track.stop());
+            currentStream = null;
+        }
+        
+        // Close the record modal
+        const modal = document.getElementById('recordModal');
+        if (modal) {
+            modal.classList.remove('active');
+            modal.classList.remove('recording-active');
+        }
+        
+        // Show error toast
+        showToast('L\'enregistrement n\'a pas pu démarrer. Veuillez réessayer.', 'error');
         return;
     }
     
     if (mediaRecorder.state === 'recording' || mediaRecorder.state === 'paused') {
         console.log('Stopping recording...');
         
-        // Stop the MediaRecorder - this will trigger onstop event
-        mediaRecorder.stop();
-        
-        // Stop timer and waveform
+        // Stop timer and waveform animations (but keep resources for onstop)
         stopRecordTimer();
         stopWaveform();
         
-        // Update UI immediately
-        document.getElementById('startRecordBtn').style.display = 'flex';
-        document.getElementById('stopRecordBtn').style.display = 'none';
+        // Stop the MediaRecorder - this will trigger onstop event which handles the rest
+        mediaRecorder.stop();
         
-        console.log('Recording stopped, waiting for onstop event...');
+        console.log('MediaRecorder.stop() called, waiting for onstop event...');
     } else {
         console.warn('MediaRecorder is not recording:', mediaRecorder.state);
-        alert('L\'enregistrement n\'est pas en cours');
+        
+        // Clean up
+        stopRecordTimer();
+        stopWaveform();
+        
+        const modal = document.getElementById('recordModal');
+        if (modal) {
+            modal.classList.remove('active');
+            modal.classList.remove('recording-active');
+        }
+        
+        showToast('L\'enregistrement n\'est pas actif', 'warning');
     }
 }
 
@@ -2566,56 +2632,53 @@ function openDepotWithRecording(prospectId, recordingData) {
     // Show depot modal
     showDepotModal(prospectId);
     
-    // Wait for modal to be visible, then add recording option
+    // Wait for modal to be visible, then show and select in-app recording option
     setTimeout(() => {
-        const depotOptions = document.querySelector('.depot-options');
+        const inAppRecordingOption = document.getElementById('inAppRecordingOption');
+        const depotRecordingInfo = document.getElementById('depotRecordingInfo');
+        const depotRecordingDuration = document.getElementById('depotRecordingDuration');
+        const depotRecordingTime = document.getElementById('depotRecordingTime');
         
-        if (depotOptions) {
-            // Check if recording option already exists
-            let recordingOption = document.querySelector('.depot-option[data-value="recording_available"]');
+        if (inAppRecordingOption) {
+            // Show the in-app recording option
+            inAppRecordingOption.style.display = 'flex';
             
-            if (!recordingOption) {
-                // Create recording option as a button similar to other options
-                recordingOption = document.createElement('label');
-                recordingOption.className = 'depot-option';
-                recordingOption.setAttribute('data-value', 'recording_available');
-                
-                const durationTime = new Date(recordingData.startTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                
-                recordingOption.innerHTML = `
-                    <input type="radio" name="depotStatus" value="recording_available">
-                    <span class="depot-option-label">
-                        <i data-lucide="mic" style="width: 18px; height: 18px; margin-right: 0.5rem; color: var(--danger-color); vertical-align: middle;"></i>
-                        Enregistrement disponible (${recordingData.durationFormatted} - ${durationTime})
-                    </span>
-                `;
-                
-                // Insert at the beginning of options
-                depotOptions.insertBefore(recordingOption, depotOptions.firstChild);
-                
-                // Reinitialize icons
-                if (typeof lucide !== 'undefined') {
-                    lucide.createIcons();
-                }
-                
-                // Add event listener for recording option
-                const recordingRadio = recordingOption.querySelector('input[type="radio"]');
-                recordingRadio.addEventListener('change', () => {
-                    if (recordingRadio.checked) {
-                        useRecordingForDepot(recordingData);
-                        updateDepotOptionUI();
-                    }
-                });
-                
-                // Auto-select and use recording if it's the first time
-                recordingRadio.checked = true;
-                recordingRadio.dispatchEvent(new Event('change'));
-            } else {
-                // Update existing option
-                const recordingRadio = recordingOption.querySelector('input[type="radio"]');
-                recordingRadio.checked = true;
-                recordingRadio.dispatchEvent(new Event('change'));
+            // Update recording info
+            if (depotRecordingDuration && recordingData.durationFormatted) {
+                depotRecordingDuration.textContent = `Durée: ${recordingData.durationFormatted}`;
             }
+            
+            if (depotRecordingTime && recordingData.startTime) {
+                const recordTime = new Date(recordingData.startTime).toLocaleTimeString('fr-FR', { 
+                    hour: '2-digit', 
+                    minute: '2-digit', 
+                    second: '2-digit' 
+                });
+                depotRecordingTime.textContent = `Heure: ${recordTime}`;
+            }
+            
+            // Select the in-app recording radio button
+            const inAppRadio = inAppRecordingOption.querySelector('input[type="radio"]');
+            if (inAppRadio) {
+                inAppRadio.checked = true;
+                
+                // Trigger change event to update UI
+                const event = new Event('change', { bubbles: true });
+                inAppRadio.dispatchEvent(event);
+            }
+            
+            // Show recording info
+            if (depotRecordingInfo) {
+                depotRecordingInfo.style.display = 'block';
+            }
+            
+            // Reinitialize icons
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+            
+            // Store recording data for later use
+            useRecordingForDepot(recordingData);
         }
     }, 100);
 }
@@ -2714,11 +2777,14 @@ function showDepotModal(prospectId) {
         recordingOption.remove();
     }
     
-    // Reset form
+    // Reset form - only select "recorded" if there's no in-app recording
     const recordedRadio = document.querySelector('input[name="depotStatus"][value="recorded"]');
     if (recordedRadio && !currentRecording) {
         recordedRadio.checked = true;
+    } else if (recordedRadio) {
+        recordedRadio.checked = false;
     }
+    
     document.getElementById('depotNote').value = '';
     
     // Reset not_recorded details
@@ -2770,6 +2836,7 @@ function updateDepotOptionUI() {
     const selectedValue = document.querySelector('input[name="depotStatus"]:checked')?.value;
     const uploadContainer = document.getElementById('depotUploadContainer');
     const notRecordedDetails = document.getElementById('depotNotRecordedDetails');
+    const depotRecordingInfo = document.getElementById('depotRecordingInfo');
     
     // Remove selected class from all options
     document.querySelectorAll('.depot-option').forEach(option => {
@@ -2788,8 +2855,8 @@ function updateDepotOptionUI() {
     // Show/hide upload zone based on selection
     const recordedOption = document.querySelector('.depot-option[data-value="recorded"]');
     if (uploadContainer && recordedOption) {
-        // Show upload zone if "recorded" or "recording_available" is selected
-        if (selectedValue === 'recorded' || selectedValue === 'recording_available') {
+        // Show upload zone only if "recorded" is selected (not for in_app_recording)
+        if (selectedValue === 'recorded') {
             uploadContainer.style.display = 'block';
             recordedOption.classList.add('has-upload-visible');
         } else {
@@ -2806,6 +2873,15 @@ function updateDepotOptionUI() {
             notRecordedDetails.style.display = 'none';
         }
     }
+    
+    // Show/hide recording info for in_app_recording
+    if (depotRecordingInfo) {
+        if (selectedValue === 'in_app_recording') {
+            depotRecordingInfo.style.display = 'block';
+        } else {
+            depotRecordingInfo.style.display = 'none';
+        }
+    }
 }
 
 // Hide depot modal
@@ -2820,10 +2896,16 @@ function hideDepotModal() {
         modal.removeAttribute('data-prospect-id');
     }
     
-    // Remove recording option if it exists
-    const recordingOption = document.querySelector('.depot-option[data-value="recording_available"]');
-    if (recordingOption) {
-        recordingOption.remove();
+    // Hide in-app recording option
+    const inAppRecordingOption = document.getElementById('inAppRecordingOption');
+    if (inAppRecordingOption) {
+        inAppRecordingOption.style.display = 'none';
+    }
+    
+    // Hide recording info
+    const depotRecordingInfo = document.getElementById('depotRecordingInfo');
+    if (depotRecordingInfo) {
+        depotRecordingInfo.style.display = 'none';
     }
 }
 
@@ -2840,10 +2922,10 @@ function showInviteModal(prospectId) {
     document.getElementById('inviteSubject').value = 'Appel de découverte';
     document.getElementById('inviteDuration').value = '30';
     
-    // Set presentation as default
-    const presentationRadio = document.querySelector('input[name="inviteType"][value="presentation"]');
-    if (presentationRadio) {
-        presentationRadio.checked = true;
+    // Set teams as default
+    const teamsRadio = document.querySelector('input[name="inviteType"][value="teams"]');
+    if (teamsRadio) {
+        teamsRadio.checked = true;
     }
     
     // Set current date and time + 1 day (format: YYYY-MM-DDTHH:mm)
@@ -2941,7 +3023,7 @@ async function confirmInvite() {
         
         if (inviteType === 'presentation') {
             // For presentation, use presentation endpoint with minimal data
-            endpoint = 'https://host.taskalys.app/webhook-test/presentation';
+            endpoint = 'https://host.taskalys.app/webhook/presentation';
             payload = {
                 user_id: window.currentUserId,
                 prospect_id: currentInviteProspectId,
@@ -2952,7 +3034,7 @@ async function confirmInvite() {
             const dateTime = document.getElementById('inviteDate').value;
             const duration = parseInt(document.getElementById('inviteDuration').value);
             
-            endpoint = 'https://host.taskalys.app/webhook-test/invite';
+            endpoint = 'https://host.taskalys.app/webhook/invite';
             payload = {
                 user_id: window.currentUserId,
                 prospect_id: currentInviteProspectId,
@@ -3037,7 +3119,7 @@ async function confirmDepot() {
     // Map deposit type - use values as specified: recorded, not_recorded, not_responded
     const depositTypeMap = {
         'recorded': 'recorded',
-        'recording_available': 'recorded', // Recording available is also treated as recorded
+        'in_app_recording': 'recorded', // In-app recording is treated as recorded
         'not_recorded': 'not_recorded',
         'no_contact': 'not_responded' // Changed from no_contact to not_responded
     };
@@ -3101,7 +3183,41 @@ async function confirmDepot() {
     const formData = new FormData();
     
     // Add file if present - rename to "Enregistrement"
-    if (file) {
+    // Check if we're using an in-app recording
+    if (selectedStatus === 'in_app_recording' && currentRecording) {
+        // Use the recording from currentRecording
+        let blob = currentRecording.blob;
+        
+        if (!blob && currentRecording.base64) {
+            // Convert base64 back to blob
+            const base64Data = currentRecording.base64;
+            const byteCharacters = atob(base64Data.split(',')[1]);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            blob = new Blob([byteArray], { type: currentRecording.mimeType });
+        }
+        
+        if (blob) {
+            // Determine file extension from mimeType
+            let extension = 'webm'; // default
+            if (currentRecording.mimeType.includes('mp4') || currentRecording.mimeType.includes('m4a')) {
+                extension = 'm4a';
+            } else if (currentRecording.mimeType.includes('wav')) {
+                extension = 'wav';
+            } else if (currentRecording.mimeType.includes('mp3') || currentRecording.mimeType.includes('mpeg')) {
+                extension = 'mp3';
+            } else if (currentRecording.mimeType.includes('ogg')) {
+                extension = 'ogg';
+            }
+            
+            const recordingFile = new File([blob], `Enregistrement.${extension}`, { type: currentRecording.mimeType });
+            formData.append('file', recordingFile);
+        }
+    } else if (file) {
+        // Use uploaded file
         // Get file extension
         const fileExtension = file.name.split('.').pop() || '';
         const newFileName = fileExtension ? `Enregistrement.${fileExtension}` : 'Enregistrement';
@@ -3139,7 +3255,7 @@ async function confirmDepot() {
     }
     
     try {
-        const response = await fetch('https://host.taskalys.app/webhook-test/deposit', {
+        const response = await fetch('https://host.taskalys.app/webhook/deposit', {
             method: 'POST',
             body: formData
         });
@@ -3208,7 +3324,7 @@ function showProspectDetails(prospectId) {
             <button class="btn-icon btn-depot-detail" title="📤 Dépôt/Confirmation - Valider l'appel et uploader l'enregistrement" data-prospect-id="${prospectId}">
                 <i data-lucide="upload"></i>
             </button>
-            <button class="btn-icon btn-invite-detail" title="📧 Invitation RDV - Envoyer la présentation ou l'invitation Teams" data-prospect-id="${prospectId}">
+            <button class="btn-icon btn-invite-detail" title="📧 Invitation RDV - Envoyer la présentation ou l'invitation Teams" data-prospect-id="${prospectId}" style="display: none;">
                 <i data-lucide="mail"></i>
             </button>
             ${archiveButton}
@@ -5678,19 +5794,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Record modal event listeners
     const recordModal = document.getElementById('recordModal');
-    const closeRecordModal = document.getElementById('closeRecordModal');
-    const startRecordBtn = document.getElementById('startRecordBtn');
     const stopRecordBtn = document.getElementById('stopRecordBtn');
     const recordSourceBtn = document.getElementById('recordSourceBtn');
     const recordSourceMenu = document.getElementById('recordSourceMenu');
-
-    if (closeRecordModal) {
-        closeRecordModal.addEventListener('click', hideRecordModal);
-    }
-
-    if (startRecordBtn) {
-        startRecordBtn.addEventListener('click', startRecording);
-    }
 
     if (stopRecordBtn) {
         stopRecordBtn.addEventListener('click', () => {

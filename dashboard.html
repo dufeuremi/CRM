@@ -55,25 +55,25 @@
                     <li class="nav-item">
                         <a href="#" class="nav-link" data-section="prospects">
                             <i data-lucide="users"></i>
-                            <span class="nav-text">Prospects</span>
+                            <span class="nav-text">Prospection</span>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a href="#" class="nav-link" data-section="rappels">
                             <i data-lucide="bell"></i>
-                            <span class="nav-text">Rappels</span>
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a href="#" class="nav-link" data-section="historique">
-                            <i data-lucide="phone"></i>
-                            <span class="nav-text">Historique des appels</span>
+                            <span class="nav-text">Relances</span>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a href="#" class="nav-link" data-section="disponibilites">
                             <i data-lucide="calendar"></i>
                             <span class="nav-text">Disponibilités</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" class="nav-link" data-section="historique">
+                            <i data-lucide="phone"></i>
+                            <span class="nav-text">Historique des appels</span>
                         </a>
                     </li>
                 </ul>
@@ -267,11 +267,11 @@
                                     
                                     <div class="date-range-container">
                                         <div class="date-filter-container">
-                                            <label for="startDateFilter" class="form-label">Date de début :</label>
+                                            <label for="startDateFilter" class="form-label"></label>
                                             <input type="date" id="startDateFilter" class="form-input">
                                         </div>
                                         <div class="date-filter-container">
-                                            <label for="endDateFilter" class="form-label">Date de fin :</label>
+                                            <label for="endDateFilter" class="form-label"></label>
                                             <input type="date" id="endDateFilter" class="form-input">
                                         </div>
                                     </div>
@@ -753,14 +753,12 @@
                                         <th>Entreprise</th>
                                         <th>Téléphone</th>
                                         <th>Email</th>
-                                        <th>LinkedIn</th>
-                                        <th>Statut</th>
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <tr>
-                                        <td colspan="7" class="empty-table">
+                                        <td colspan="5" class="empty-table">
                                             <i data-lucide="inbox"></i>
                                             <p>Aucun prospect pour le moment</p>
                                         </td>
@@ -917,14 +915,14 @@
                         <label class="form-label">Type d'envoi</label>
                         <div class="invite-type-options">
                             <label class="invite-type-option">
-                                <input type="radio" name="inviteType" value="presentation" checked>
+                                <input type="radio" name="inviteType" value="presentation">
                                 <span class="invite-type-label">
                                     <i data-lucide="presentation"></i>
                                     Envoyer la présentation
                                 </span>
                             </label>
                             <label class="invite-type-option">
-                                <input type="radio" name="inviteType" value="teams">
+                                <input type="radio" name="inviteType" value="teams" checked>
                                 <span class="invite-type-label">
                                     <i data-lucide="video"></i>
                                     Envoyer l'invitation Teams
@@ -974,7 +972,7 @@
                                 <div class="depot-instructions-warning">
                                     <i data-lucide="alert-circle"></i>
                                     <div>
-                                        <strong>Soyez daprécis et exhaustif :</strong>
+                                        <strong>Soyez précis et exhaustif :</strong>
                                         <ul>
                                             <li>Décrivez tous les points abordés pendant l'appel</li>
                                             <li>Mentionnez toutes les échéances évoquées</li>
@@ -993,9 +991,28 @@
                             <input type="radio" name="depotStatus" value="no_contact">
                             <span class="depot-option-label">N'a pas décroché</span>
                         </label>
+                        <label class="depot-option" data-value="in_app_recording" id="inAppRecordingOption" style="display: none;">
+                            <div class="depot-option-header">
+                                <input type="radio" name="depotStatus" value="in_app_recording">
+                                <span class="depot-option-label">
+                                    <i data-lucide="mic" style="width: 18px; height: 18px; margin-right: 0.5rem; color: var(--danger-color); vertical-align: middle;"></i>
+                                    Envoyer l'enregistrement in app
+                                </span>
+                            </div>
+                            <div class="depot-recording-info" id="depotRecordingInfo" style="display: none; margin-top: 0.75rem; padding: 0.75rem; background: #f8fafc; border-radius: 8px; font-size: 0.875rem; color: #64748b;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <i data-lucide="clock" style="width: 16px; height: 16px;"></i>
+                                    <span id="depotRecordingDuration">Durée: --:--</span>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem;">
+                                    <i data-lucide="calendar" style="width: 16px; height: 16px;"></i>
+                                    <span id="depotRecordingTime">Heure: --:--:--</span>
+                                </div>
+                            </div>
+                        </label>
                         <label class="depot-option" data-value="recorded">
                             <div class="depot-option-header">
-                                <input type="radio" name="depotStatus" value="recorded" checked>
+                                <input type="radio" name="depotStatus" value="recorded">
                                 <span class="depot-option-label">J'ai l'enregistrement</span>
                             </div>
                             <div class="depot-upload-container" id="depotUploadContainer">
@@ -1121,14 +1138,9 @@
             <div class="record-timer" id="recordTimer">00:00</div>
             
             <div class="record-buttons-group">
-                <button class="record-btn-play" id="startRecordBtn" title="Démarrer l'enregistrement">
-                    <i data-lucide="play"></i>
-                </button>
-                <button class="record-btn-stop" id="stopRecordBtn" style="display: none;" title="Arrêter l'enregistrement">
+                <button class="record-btn-stop" id="stopRecordBtn" title="Fin enregistrement">
                     <i data-lucide="square"></i>
-                </button>
-                <button class="record-btn-close" id="closeRecordModal" title="Fermer">
-                    <i data-lucide="x"></i>
+                    <span style="margin-left: 0.5rem;">Fin enregistrement</span>
                 </button>
             </div>
         </div>

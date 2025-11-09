@@ -746,7 +746,7 @@ body::before {
     align-items: center;
     gap: 0.5rem;
     font-family: 'Sora', sans-serif;
-    height: 100%;
+    height: 42px;
     box-sizing: border-box;
 }
 
@@ -1136,13 +1136,11 @@ body::before {
 }
 
 /* Colonnes alignment pour les tableaux prospects */
-.data-table th:nth-child(1), .data-table td:nth-child(1) { width: 20%; min-width: 180px; } /* NOM */
-.data-table th:nth-child(2), .data-table td:nth-child(2) { width: 15%; min-width: 120px; } /* ENTREPRISE */
-.data-table th:nth-child(3), .data-table td:nth-child(3) { width: 12%; min-width: 110px; } /* TÉLÉPHONE */
-.data-table th:nth-child(4), .data-table td:nth-child(4) { width: 20%; min-width: 180px; } /* EMAIL */
-.data-table th:nth-child(5), .data-table td:nth-child(5) { width: 8%; min-width: 60px; text-align: center; } /* LINKEDIN */
-.data-table th:nth-child(6), .data-table td:nth-child(6) { width: 12%; min-width: 100px; } /* STATUT */
-.data-table th:nth-child(7), .data-table td:nth-child(7) { width: 13%; min-width: 120px; text-align: center; } /* ACTIONS */
+.data-table th:nth-child(1), .data-table td:nth-child(1) { width: 25%; min-width: 200px; } /* NOM */
+.data-table th:nth-child(2), .data-table td:nth-child(2) { width: 20%; min-width: 150px; } /* ENTREPRISE */
+.data-table th:nth-child(3), .data-table td:nth-child(3) { width: 15%; min-width: 120px; } /* TÉLÉPHONE */
+.data-table th:nth-child(4), .data-table td:nth-child(4) { width: 25%; min-width: 200px; } /* EMAIL */
+.data-table th:nth-child(5), .data-table td:nth-child(5) { width: 15%; min-width: 150px; text-align: center; } /* ACTIONS */
 
 .data-table tbody tr[data-prospect-id] {
     cursor: pointer;
@@ -2449,6 +2447,28 @@ body::before {
     align-items: stretch;
 }
 
+.depot-option[data-value="in_app_recording"] {
+    flex-direction: column;
+    align-items: stretch;
+    border-color: var(--danger-color);
+    border-width: 2px;
+    background-color: rgba(239, 68, 68, 0.05);
+}
+
+.depot-option[data-value="in_app_recording"]:hover {
+    background-color: rgba(239, 68, 68, 0.1);
+    border-color: var(--danger-color);
+}
+
+.depot-option[data-value="in_app_recording"] .depot-option-label {
+    color: var(--danger-color);
+    font-weight: 500;
+}
+
+.depot-option[data-value="in_app_recording"] input[type="radio"] {
+    accent-color: var(--danger-color);
+}
+
 .depot-option-header {
     display: flex;
     align-items: center;
@@ -2639,6 +2659,19 @@ body::before {
     margin: 0 !important;
     padding: 0 !important;
     overflow: hidden !important;
+}
+
+/* Depot recording info */
+.depot-recording-info {
+    overflow: hidden;
+    max-height: 0;
+    opacity: 0;
+    transition: max-height 0.4s ease, opacity 0.3s ease, margin 0.3s ease, padding 0.3s ease;
+}
+
+.depot-recording-info[style*="display: block"] {
+    max-height: 200px;
+    opacity: 1;
 }
 
 .depot-upload-zone {
@@ -3122,9 +3155,36 @@ body::before {
     transform: translateY(0);
 }
 
-.record-btn-play,
-.record-btn-stop,
-.record-btn-close {
+/* Recording active indicator */
+.record-modal-overlay.recording-active .record-modal-content {
+    border-color: #ef4444;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1), var(--shadow-strong);
+}
+
+.record-modal-overlay.recording-active .record-modal-content::before {
+    content: '';
+    position: absolute;
+    top: 1rem;
+    left: 1rem;
+    width: 8px;
+    height: 8px;
+    background-color: #ef4444;
+    border-radius: 50%;
+    animation: pulse-recording 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-recording {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.5;
+        transform: scale(1.2);
+    }
+}
+
+.record-btn-stop {
     background: none;
     border: none;
     color: var(--text-primary);
@@ -3135,35 +3195,26 @@ body::before {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 36px;
     height: 36px;
     flex-shrink: 0;
 }
 
-.record-btn-play:hover,
-.record-btn-stop:hover,
-.record-btn-close:hover {
+.record-btn-stop:hover {
     background-color: var(--bg-light);
 }
 
-.record-btn-play i,
-.record-btn-play svg,
 .record-btn-stop i,
-.record-btn-stop svg,
-.record-btn-close i,
-.record-btn-close svg {
+.record-btn-stop svg {
     width: 20px;
     height: 20px;
     stroke-width: 2.5;
 }
 
-.record-btn-play {
-    color: var(--primary-color);
-}
-
 .record-btn-stop {
     color: var(--danger-color);
-    display: none;
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
 }
 
 .record-prospect-name {
@@ -4091,28 +4142,30 @@ body::before {
 
 .analytics-filters {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     gap: 1.5rem;
+    align-items: center;
     margin-bottom: 2rem;
     padding: 1.5rem;
     background-color: var(--bg-white);
     border-radius: 15px;
     border: 1px solid #7b90ad;
     box-shadow: var(--shadow-standard);
+    flex-wrap: wrap;
 }
 
 .analytics-filters-row {
     display: flex;
     gap: 1.5rem;
-    align-items: flex-end;
-    flex-wrap: wrap;
+    align-items: center;
+    flex-wrap: nowrap;
+    flex: 1;
 }
 
 .user-filter-container {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
-    flex: 1;
     min-width: 250px;
 }
 
@@ -4134,6 +4187,7 @@ body::before {
     cursor: pointer;
     transition: var(--transition);
     white-space: nowrap;
+    height: 42px;
 }
 
 .date-shortcut-btn:hover {
@@ -4152,7 +4206,7 @@ body::before {
 .date-range-container {
     display: flex;
     gap: 1rem;
-    align-items: flex-end;
+    align-items: center;
 }
 
 .period-filter-container,
@@ -4165,7 +4219,7 @@ body::before {
 .filter-actions {
     display: flex;
     gap: 0.75rem;
-    align-items: flex-end;
+    align-items: center;
 }
 
 .form-input {
@@ -4178,6 +4232,8 @@ body::before {
     background-color: var(--bg-white);
     transition: var(--transition);
     min-width: 160px;
+    height: 42px;
+    box-sizing: border-box;
 }
 
 .form-input:focus {
