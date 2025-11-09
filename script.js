@@ -1789,8 +1789,6 @@ function displayProspects(prospects) {
                             <th>Entreprise</th>
                             <th>Téléphone</th>
                             <th>Email</th>
-                            <th>LinkedIn</th>
-                            <th>Statut</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -1802,7 +1800,7 @@ function displayProspects(prospects) {
         if (prospectsList.length === 0) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="7" class="empty-table">
+                    <td colspan="5" class="empty-table">
                         <i data-lucide="inbox"></i>
                         <p>Aucun prospect</p>
                     </td>
@@ -2166,7 +2164,8 @@ async function unarchiveProspect(prospectId) {
     }
 }
 
-// Record modal variables
+// ===== RECORD MODAL - ENREGISTREMENT AUDIO =====
+// Variables globales pour l'enregistrement
 let currentRecordProspectId = null;
 let mediaRecorder = null;
 let audioChunks = [];
@@ -2176,55 +2175,18 @@ let currentRecording = null;
 let audioContext = null;
 let analyser = null;
 let waveformInterval = null;
-let currentStream = null; // Add stream to global scope
+let isRecording = false;
+let currentStream = null;
 
-// Initialize waveform
-function initWaveform() {
-    const waveformContainer = document.getElementById('recordWaveform');
-    if (!waveformContainer) return;
-    
-    // Clear existing bars
-    waveformContainer.innerHTML = '';
-    
-    // Create 50 bars for the waveform
-    for (let i = 0; i < 50; i++) {
-        const bar = document.createElement('div');
-        bar.className = 'record-waveform-bar';
-        bar.style.height = '4px';
-        waveformContainer.appendChild(bar);
-    }
-}
+// Afficher la popup d'enregistrement
 
-// Update waveform in real-time
-function updateWaveform() {
-    if (!analyser) return;
-    
-    const bufferLength = analyser.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
-    analyser.getByteFrequencyData(dataArray);
-    
-    const waveformContainer = document.getElementById('recordWaveform');
-    if (!waveformContainer) return;
-    
-    const bars = waveformContainer.querySelectorAll('.record-waveform-bar');
-    const barCount = bars.length;
-    const step = Math.floor(bufferLength / barCount);
-    
-    bars.forEach((bar, index) => {
-        const dataIndex = index * step;
-        const value = dataArray[dataIndex] || 0;
-        // Normalize value to height between 4px and 100px
-        const height = Math.max(4, (value / 255) * 100);
-        bar.style.height = `${height}px`;
-    });
-}
-
-// Show record modal
+// Afficher la popup d'enregistrement
 function showRecordModal(prospectId) {
+    console.log('Opening record modal for prospect:', prospectId);
     currentRecordProspectId = prospectId;
     const modal = document.getElementById('recordModal');
     
-    // Get prospect info and display name
+    // Afficher le nom du prospect
     const prospect = allProspects.find(p => p.id === prospectId);
     const prospectNameEl = document.getElementById('recordProspectName');
     if (prospectNameEl && prospect) {
@@ -2234,59 +2196,46 @@ function showRecordModal(prospectId) {
         prospectNameEl.textContent = fullName;
     }
     
-    // Reset UI
+    // Réinitialiser l'interface
     document.getElementById('recordTimer').textContent = '00:00';
-    document.getElementById('stopRecordBtn').style.display = 'flex';
+    const startBtn = document.getElementById('startRecordBtn');
+    const stopBtn = document.getElementById('stopRecordBtn');
     
-    // Reset source selection
+    if (startBtn) {
+        startBtn.style.display = 'flex';
+        startBtn.disabled = false;
+    }
+    if (stopBtn) {
+        stopBtn.style.display = 'none';
+        stopBtn.disabled = true;
+    }
+    
+    // Réinitialiser la sélection de source
     const microphoneRadio = document.querySelector('input[name="recordSource"][value="microphone"]');
-    const systemRadio = document.querySelector('input[name="recordSource"][value="system"]');
     if (microphoneRadio) microphoneRadio.checked = true;
-    if (systemRadio) systemRadio.checked = false;
-    
-    // Update source text
     updateSourceText();
     
-    // Close dropdown menu
+    // Fermer le menu déroulant si ouvert
     const dropdown = document.querySelector('.record-source-dropdown');
     const menu = document.getElementById('recordSourceMenu');
     if (dropdown) dropdown.classList.remove('active');
     if (menu) menu.style.display = 'none';
     
-    // Initialize waveform
+    // Réinitialiser la waveform
     initWaveform();
     
+    // Afficher la modal
     modal.classList.add('active');
+    modal.classList.remove('recording-active');
+    isRecording = false;
     
-    // Reinitialize icons
+    // Réinitialiser les icônes
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();
     }
-    
-    // Start recording automatically
-    setTimeout(async () => {
-        try {
-            await startRecording();
-        } catch (error) {
-            console.error('Failed to start recording:', error);
-            hideRecordModal();
-            showToast('Impossible de démarrer l\'enregistrement. Vérifiez vos permissions.', 'error');
-        }
-    }, 300);
-    
-    // Add event listeners for source selection
-    document.querySelectorAll('input[name="recordSource"]').forEach(radio => {
-        radio.addEventListener('change', () => {
-            updateSourceText();
-            const dropdown = document.querySelector('.record-source-dropdown');
-            const menu = document.getElementById('recordSourceMenu');
-            if (dropdown) dropdown.classList.remove('active');
-            if (menu) menu.style.display = 'none';
-        });
-    });
 }
 
-// Update source text in dropdown button
+// Mettre à jour le texte de la source sélectionnée
 function updateSourceText() {
     const selectedRadio = document.querySelector('input[name="recordSource"]:checked');
     const sourceText = document.getElementById('recordSourceText');
@@ -2300,214 +2249,172 @@ function updateSourceText() {
     }
 }
 
-// Hide record modal
+// Fermer la popup d'enregistrement
 function hideRecordModal() {
+    console.log('Hiding record modal');
     const modal = document.getElementById('recordModal');
-    modal.classList.remove('active');
-    modal.classList.remove('recording-active');
-    currentRecordProspectId = null;
-    
-    // Only stop recording if it's still active (not already stopping)
-    if (mediaRecorder && mediaRecorder.state === 'recording') {
-        console.log('hideRecordModal: stopping active recording');
-        mediaRecorder.stop();
+    if (modal) {
+        modal.classList.remove('active');
+        modal.classList.remove('recording-active');
     }
     
-    // Stop waveform
+    // Arrêter les animations et nettoyer
     stopWaveform();
-    
-    // Stop timer
     stopRecordTimer();
     
-    // Clean up streams
+    // Arrêter les flux média
     if (currentStream) {
-        currentStream.getTracks().forEach(track => track.stop());
+        currentStream.getTracks().forEach(track => {
+            track.stop();
+            console.log('Track stopped:', track.kind);
+        });
         currentStream = null;
+    }
+    
+    // Arrêter l'enregistrement si actif
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        console.log('Force stopping active mediaRecorder, state:', mediaRecorder.state);
+        try {
+            mediaRecorder.stop();
+        } catch (error) {
+            console.error('Error force stopping mediaRecorder:', error);
+        }
+    }
+    
+    // Réinitialiser les variables
+    mediaRecorder = null;
+    audioChunks = [];
+    isRecording = false;
+    
+    // Réinitialiser le bouton
+    const startBtn = document.getElementById('startRecordBtn');
+    const stopBtn = document.getElementById('stopRecordBtn');
+    if (startBtn) {
+        startBtn.style.display = 'flex';
+        startBtn.disabled = false;
+    }
+    if (stopBtn) {
+        stopBtn.style.display = 'none';
+        stopBtn.disabled = true;
     }
 }
 
-// Start recording
+// Démarrer l'enregistrement
 async function startRecording() {
+    if (isRecording) {
+        console.warn('Recording already in progress');
+        return;
+    }
+    
+    console.log('Starting recording for prospect:', currentRecordProspectId);
+    
     try {
-        const source = document.querySelector('input[name="recordSource"]:checked').value;
+        // Obtenir la source audio sélectionnée
+        const sourceRadio = document.querySelector('input[name="recordSource"]:checked');
+        const source = sourceRadio ? sourceRadio.value : 'microphone';
         
+        // Demander l'accès au microphone ou à la sortie audio système
         if (source === 'microphone') {
-            // Request microphone access
-            currentStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            currentStream = await navigator.mediaDevices.getUserMedia({ 
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
+                }
+            });
         } else {
-            // System audio capture (screen capture with audio)
-            // Note: This requires user to share screen with audio
+            // Capture audio système (nécessite le partage d'écran)
             try {
                 currentStream = await navigator.mediaDevices.getDisplayMedia({ 
                     video: false, 
                     audio: true 
                 });
             } catch (error) {
-                // Fallback to microphone if system audio not available
                 console.warn('System audio not available, falling back to microphone');
                 currentStream = await navigator.mediaDevices.getUserMedia({ audio: true });
             }
         }
         
-        // Initialize AudioContext for waveform visualization
+        // Initialiser le contexte audio pour la visualisation
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
         analyser = audioContext.createAnalyser();
         analyser.fftSize = 256;
         const audioSource = audioContext.createMediaStreamSource(currentStream);
         audioSource.connect(analyser);
         
-        // Initialize MediaRecorder with API-compatible formats
-        // Priority: audio/mp4 (M4A) > audio/mpeg (MP3) > audio/wav > audio/webm (fallback)
-        let options = {};
-        
-        // Try M4A first (best quality and compatibility with API)
-        if (MediaRecorder.isTypeSupported('audio/mp4')) {
-            options.mimeType = 'audio/mp4';
-        }
-        // Try MP3 (widely supported)
-        else if (MediaRecorder.isTypeSupported('audio/mpeg')) {
-            options.mimeType = 'audio/mpeg';
-        }
-        // Try WAV (lossless but large file size)
-        else if (MediaRecorder.isTypeSupported('audio/wav')) {
-            options.mimeType = 'audio/wav';
-        }
-        // Try WebM with Opus codec as fallback
-        else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-            options.mimeType = 'audio/webm;codecs=opus';
-        }
-        // Last resort: WebM without codec specification
-        else if (MediaRecorder.isTypeSupported('audio/webm')) {
-            options.mimeType = 'audio/webm';
-        }
-        else {
+        // Déterminer le meilleur format audio supporté
+        let mimeType = '';
+        if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+            mimeType = 'audio/webm;codecs=opus';
+        } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+            mimeType = 'audio/webm';
+        } else if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
+            mimeType = 'audio/ogg;codecs=opus';
+        } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+            mimeType = 'audio/mp4';
+        } else {
             throw new Error('Aucun format audio supporté par votre navigateur');
         }
         
-        console.log('Recording with MIME type:', options.mimeType);
+        console.log('Using MIME type:', mimeType);
         
-        mediaRecorder = new MediaRecorder(currentStream, options);
+        // Initialiser MediaRecorder
+        mediaRecorder = new MediaRecorder(currentStream, { mimeType });
         audioChunks = [];
         
+        // Collecter les données audio
         mediaRecorder.ondataavailable = (event) => {
-            if (event.data.size > 0) {
+            if (event.data && event.data.size > 0) {
                 audioChunks.push(event.data);
+                console.log('Audio chunk received, size:', event.data.size);
             }
         };
         
+        // Gérer la fin de l'enregistrement
         mediaRecorder.onstop = () => {
-            console.log('MediaRecorder onstop event triggered');
-            
-            // Save prospect ID before anything else (will be reset by hideRecordModal)
-            const prospectId = currentRecordProspectId;
-            
-            const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
-            const audioUrl = URL.createObjectURL(audioBlob);
-            
-            // Calculate duration
-            const duration = Math.floor((Date.now() - recordStartTime) / 1000);
-            const durationMinutes = Math.floor(duration / 60);
-            const durationSeconds = duration % 60;
-            const durationFormatted = `${String(durationMinutes).padStart(2, '0')}:${String(durationSeconds).padStart(2, '0')}`;
-            
-            console.log('Recording duration:', durationFormatted);
-            
-            // Store recording in localStorage with metadata
-            const recordingId = `recording_${Date.now()}_${prospectId}`;
-            const recordingData = {
-                id: recordingId,
-                prospectId: prospectId,
-                blob: audioBlob,
-                url: audioUrl,
-                mimeType: mediaRecorder.mimeType,
-                startTime: new Date(recordStartTime).toISOString(),
-                duration: duration,
-                durationFormatted: durationFormatted,
-                timestamp: Date.now()
-            };
-            
-            // Store in localStorage (convert blob to base64 for storage)
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                console.log('Base64 conversion complete');
-                const base64data = reader.result;
-                const storageData = {
-                    ...recordingData,
-                    blob: null, // Remove blob from storage
-                    base64: base64data
-                };
-                localStorage.setItem(recordingId, JSON.stringify(storageData));
-                
-                // Store reference in prospect recordings
-                const prospectRecordings = JSON.parse(localStorage.getItem(`prospect_${prospectId}_recordings`) || '[]');
-                prospectRecordings.push(recordingId);
-                localStorage.setItem(`prospect_${prospectId}_recordings`, JSON.stringify(prospectRecordings));
-                
-                console.log('Recording saved to localStorage');
-                
-                // Check if format is compatible with API
-                const mimeType = mediaRecorder.mimeType;
-                const isApiCompatible = mimeType.includes('audio/mp4') || 
-                                       mimeType.includes('audio/mpeg') || 
-                                       mimeType.includes('audio/mp3') || 
-                                       mimeType.includes('audio/wav') || 
-                                       mimeType.includes('audio/x-m4a');
-                
-                if (!isApiCompatible) {
-                    console.warn('Recording format not directly compatible with API:', mimeType);
-                    showToast('Format d\'enregistrement non optimal. Le fichier pourrait nécessiter une conversion.', 'warning');
-                }
-                
-                // Stop all tracks before hiding modal
-                if (currentStream) {
-                    currentStream.getTracks().forEach(track => track.stop());
-                    currentStream = null;
-                }
-                
-                // Hide record modal
-                const modal = document.getElementById('recordModal');
-                if (modal) {
-                    modal.classList.remove('active');
-                    modal.classList.remove('recording-active');
-                }
-                
-                console.log('Opening depot modal with recording for prospect:', prospectId);
-                
-                // Open depot modal with recording option (pass data with blob for immediate use)
-                // Use setTimeout to ensure modal is fully hidden before showing depot modal
-                setTimeout(() => {
-                    openDepotWithRecording(prospectId, {
-                        ...recordingData,
-                        base64: base64data
-                    });
-                }, 250);
-            };
-            reader.readAsDataURL(audioBlob);
+            console.log('MediaRecorder stopped, processing', audioChunks.length, 'chunks');
+            processRecording();
         };
         
-        // Start recording
-        recordStartTime = Date.now();
-        mediaRecorder.start();
+        // Gérer les erreurs
+        mediaRecorder.onerror = (error) => {
+            console.error('MediaRecorder error:', error);
+            showToast('Erreur lors de l\'enregistrement', 'error');
+            stopRecording();
+        };
         
-        // Add recording class to modal for visual feedback
-        const recordModal = document.getElementById('recordModal');
-        if (recordModal) {
-            recordModal.classList.add('recording-active');
+        // Démarrer l'enregistrement
+        recordStartTime = Date.now();
+        mediaRecorder.start(100); // Collecter les données toutes les 100ms
+        isRecording = true;
+        
+        console.log('MediaRecorder started, state:', mediaRecorder.state);
+        
+        // Mettre à jour l'interface
+        const modal = document.getElementById('recordModal');
+        const startBtn = document.getElementById('startRecordBtn');
+        const stopBtn = document.getElementById('stopRecordBtn');
+        
+        if (modal) modal.classList.add('recording-active');
+        if (startBtn) {
+            startBtn.style.display = 'none';
+            startBtn.disabled = true;
+        }
+        if (stopBtn) {
+            stopBtn.style.display = 'flex';
+            stopBtn.disabled = false;
         }
         
-        // Start timer
+        // Démarrer le timer et la waveform
         startRecordTimer();
-        
-        // Start waveform animation
         waveformInterval = setInterval(updateWaveform, 50);
         
-        console.log('Recording started successfully');
-        console.log('MediaRecorder state:', mediaRecorder.state);
+        showToast('Enregistrement démarré', 'success');
         
     } catch (error) {
         console.error('Error starting recording:', error);
         
-        // Clean up on error
+        // Nettoyer en cas d'erreur
         if (currentStream) {
             currentStream.getTracks().forEach(track => track.stop());
             currentStream = null;
@@ -2517,77 +2424,192 @@ async function startRecording() {
             audioContext = null;
         }
         
-        // Rethrow error to be caught by caller
-        throw error;
+        isRecording = false;
+        showToast('Impossible de démarrer l\'enregistrement. Vérifiez vos permissions.', 'error');
     }
 }
 
-// Stop recording
-function stopRecording() {
-    console.log('Stop recording called');
-    console.log('MediaRecorder exists:', !!mediaRecorder);
-    console.log('MediaRecorder state:', mediaRecorder ? mediaRecorder.state : 'no mediaRecorder');
-    
-    if (!mediaRecorder) {
-        console.error('No mediaRecorder available - recording may not have started');
-        
-        // Clean up any remaining resources
-        stopRecordTimer();
-        stopWaveform();
-        
-        if (currentStream) {
-            currentStream.getTracks().forEach(track => track.stop());
-            currentStream = null;
-        }
-        
-        // Close the record modal
-        const modal = document.getElementById('recordModal');
-        if (modal) {
-            modal.classList.remove('active');
-            modal.classList.remove('recording-active');
-        }
-        
-        // Show error toast
-        showToast('L\'enregistrement n\'a pas pu démarrer. Veuillez réessayer.', 'error');
+// Arrêter l'enregistrement
+async function stopRecording() {
+    if (!isRecording) {
+        console.warn('No recording in progress');
         return;
     }
     
-    if (mediaRecorder.state === 'recording' || mediaRecorder.state === 'paused') {
-        console.log('Stopping recording...');
-        
-        // Stop timer and waveform animations (but keep resources for onstop)
-        stopRecordTimer();
-        stopWaveform();
-        
-        // Stop the MediaRecorder - this will trigger onstop event which handles the rest
+    console.log('Stopping recording');
+    isRecording = false;
+    
+    // Arrêter le timer et la waveform
+    stopRecordTimer();
+    stopWaveform();
+    
+    // Désactiver le bouton stop
+    const stopBtn = document.getElementById('stopRecordBtn');
+    if (stopBtn) {
+        stopBtn.disabled = true;
+    }
+    
+    // Vérifier que le mediaRecorder existe et est actif
+    if (!mediaRecorder) {
+        console.error('No mediaRecorder available');
+        showToast('Erreur : enregistrement non démarré', 'error');
+        hideRecordModal();
+        return;
+    }
+    
+    if (mediaRecorder.state === 'inactive') {
+        console.warn('MediaRecorder already inactive');
+        return;
+    }
+    
+    // Arrêter le mediaRecorder
+    try {
+        console.log('Calling mediaRecorder.stop(), current state:', mediaRecorder.state);
         mediaRecorder.stop();
         
-        console.log('MediaRecorder.stop() called, waiting for onstop event...');
-    } else {
-        console.warn('MediaRecorder is not recording:', mediaRecorder.state);
-        
-        // Clean up
-        stopRecordTimer();
-        stopWaveform();
-        
-        const modal = document.getElementById('recordModal');
-        if (modal) {
-            modal.classList.remove('active');
-            modal.classList.remove('recording-active');
+        // Arrêter le flux audio
+        if (currentStream) {
+            currentStream.getTracks().forEach(track => track.stop());
         }
         
-        showToast('L\'enregistrement n\'est pas actif', 'warning');
+    } catch (error) {
+        console.error('Error stopping mediaRecorder:', error);
+        showToast('Erreur lors de l\'arrêt de l\'enregistrement', 'error');
+        hideRecordModal();
     }
 }
 
-// Stop waveform animation
+// Traiter l'enregistrement après l'arrêt
+function processRecording() {
+    console.log('Processing recording, chunks:', audioChunks.length);
+    
+    if (audioChunks.length === 0) {
+        console.error('No audio data recorded');
+        showToast('Aucune donnée audio enregistrée', 'error');
+        hideRecordModal();
+        return;
+    }
+    
+    // Créer le blob audio
+    const mimeType = mediaRecorder.mimeType;
+    const audioBlob = new Blob(audioChunks, { type: mimeType });
+    console.log('Audio blob created, size:', audioBlob.size, 'type:', mimeType);
+    
+    if (audioBlob.size === 0) {
+        console.error('Audio blob is empty');
+        showToast('Enregistrement vide', 'error');
+        hideRecordModal();
+        return;
+    }
+    
+    // Calculer la durée
+    const duration = Math.floor((Date.now() - recordStartTime) / 1000);
+    const durationFormatted = `${Math.floor(duration / 60).toString().padStart(2, '0')}:${(duration % 60).toString().padStart(2, '0')}`;
+    
+    // Créer l'objet recording
+    const prospectId = currentRecordProspectId;
+    const recordingId = `recording_${Date.now()}_${prospectId}`;
+    const recordingData = {
+        id: recordingId,
+        prospectId: prospectId,
+        blob: audioBlob,
+        mimeType: mimeType,
+        startTime: new Date(recordStartTime).toISOString(),
+        duration: duration,
+        durationFormatted: durationFormatted,
+        timestamp: Date.now()
+    };
+    
+    console.log('Recording data created:', recordingData.id, 'duration:', durationFormatted);
+    
+    // Convertir en base64 pour le stockage
+    const reader = new FileReader();
+    reader.onloadend = () => {
+        const base64data = reader.result;
+        recordingData.base64 = base64data;
+        
+        // Sauvegarder dans localStorage
+        try {
+            const storageData = { ...recordingData, blob: null }; // Ne pas stocker le blob
+            localStorage.setItem(recordingId, JSON.stringify(storageData));
+            
+            // Ajouter à la liste des enregistrements du prospect
+            const prospectRecordings = JSON.parse(localStorage.getItem(`prospect_${prospectId}_recordings`) || '[]');
+            prospectRecordings.push(recordingId);
+            localStorage.setItem(`prospect_${prospectId}_recordings`, JSON.stringify(prospectRecordings));
+            
+            console.log('Recording saved to localStorage');
+        } catch (error) {
+            console.error('Error saving to localStorage:', error);
+        }
+        
+        // Fermer la popup d'enregistrement et ouvrir le depot avec l'enregistrement
+        hideRecordModal();
+        showToast('Enregistrement terminé', 'success');
+        
+        // Ouvrir le depot modal avec l'enregistrement
+        setTimeout(() => {
+            openDepotWithRecording(prospectId, recordingData);
+        }, 300);
+    };
+    
+    reader.onerror = (error) => {
+        console.error('Error reading audio blob:', error);
+        showToast('Erreur lors du traitement de l\'enregistrement', 'error');
+        hideRecordModal();
+    };
+    
+    reader.readAsDataURL(audioBlob);
+}
+
+// Initialiser la waveform
+function initWaveform() {
+    const waveformContainer = document.getElementById('recordWaveform');
+    if (!waveformContainer) return;
+    
+    // Créer les barres de la waveform (20 barres)
+    waveformContainer.innerHTML = '';
+    for (let i = 0; i < 20; i++) {
+        const bar = document.createElement('div');
+        bar.className = 'record-waveform-bar';
+        bar.style.height = '4px';
+        waveformContainer.appendChild(bar);
+    }
+}
+
+// Mettre à jour la waveform avec les données audio
+function updateWaveform() {
+    if (!analyser) return;
+    
+    const waveformContainer = document.getElementById('recordWaveform');
+    if (!waveformContainer) return;
+    
+    const bars = waveformContainer.querySelectorAll('.record-waveform-bar');
+    if (bars.length === 0) return;
+    
+    // Obtenir les données de fréquence
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+    analyser.getByteFrequencyData(dataArray);
+    
+    // Mettre à jour chaque barre
+    const step = Math.floor(bufferLength / bars.length);
+    bars.forEach((bar, i) => {
+        const value = dataArray[i * step];
+        // Convertir la valeur (0-255) en hauteur (4px-40px)
+        const height = Math.max(4, (value / 255) * 40);
+        bar.style.height = `${height}px`;
+    });
+}
+
+// Arrêter la waveform
 function stopWaveform() {
     if (waveformInterval) {
         clearInterval(waveformInterval);
         waveformInterval = null;
     }
     
-    // Reset waveform bars to minimum height
+    // Réinitialiser les barres
     const waveformContainer = document.getElementById('recordWaveform');
     if (waveformContainer) {
         const bars = waveformContainer.querySelectorAll('.record-waveform-bar');
@@ -2596,7 +2618,7 @@ function stopWaveform() {
         });
     }
     
-    // Close audio context
+    // Fermer le contexte audio
     if (audioContext) {
         audioContext.close();
         audioContext = null;
@@ -2604,20 +2626,22 @@ function stopWaveform() {
     }
 }
 
-// Start record timer
+// Démarrer le timer d'enregistrement
 function startRecordTimer() {
+    const timerEl = document.getElementById('recordTimer');
+    if (!timerEl) return;
+    
     recordTimerInterval = setInterval(() => {
         if (recordStartTime) {
             const elapsed = Math.floor((Date.now() - recordStartTime) / 1000);
             const minutes = Math.floor(elapsed / 60);
             const seconds = elapsed % 60;
-            document.getElementById('recordTimer').textContent = 
-                `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            timerEl.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
         }
     }, 1000);
 }
 
-// Stop record timer
+// Arrêter le timer d'enregistrement
 function stopRecordTimer() {
     if (recordTimerInterval) {
         clearInterval(recordTimerInterval);
@@ -3255,7 +3279,7 @@ async function confirmDepot() {
     }
     
     try {
-        const response = await fetch('https://host.taskalys.app/webhook/deposit', {
+        const response = await fetch('https://host.taskalys.app/webhook-test/depositAI', {
             method: 'POST',
             body: formData
         });
@@ -5794,9 +5818,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Record modal event listeners
     const recordModal = document.getElementById('recordModal');
+    const startRecordBtn = document.getElementById('startRecordBtn');
     const stopRecordBtn = document.getElementById('stopRecordBtn');
     const recordSourceBtn = document.getElementById('recordSourceBtn');
     const recordSourceMenu = document.getElementById('recordSourceMenu');
+
+    if (startRecordBtn) {
+        startRecordBtn.addEventListener('click', () => {
+            console.log('Start button clicked');
+            startRecording();
+        });
+    }
 
     if (stopRecordBtn) {
         stopRecordBtn.addEventListener('click', () => {

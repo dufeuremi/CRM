@@ -3184,6 +3184,44 @@ body::before {
     }
 }
 
+.record-btn-start {
+    background: none;
+    border: none;
+    color: var(--text-primary);
+    cursor: pointer;
+    padding: 0.5rem;
+    border-radius: 12px;
+    transition: var(--transition);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 36px;
+    flex-shrink: 0;
+}
+
+.record-btn-start:hover {
+    background-color: var(--bg-light);
+}
+
+.record-btn-start i,
+.record-btn-start svg {
+    width: 20px;
+    height: 20px;
+    stroke-width: 2.5;
+}
+
+.record-btn-start {
+    color: var(--success-color);
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.record-btn-start:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .record-btn-stop {
     background: none;
     border: none;
@@ -3215,6 +3253,11 @@ body::before {
     padding: 0.75rem 1rem;
     font-size: 0.875rem;
     font-weight: 500;
+}
+
+.record-btn-stop:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 .record-prospect-name {
