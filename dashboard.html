@@ -34,6 +34,12 @@
                             <span class="nav-text">Dashboard</span>
                         </a>
                     </li>
+                    <li class="nav-item admin-only" id="analyticsNavItem" style="display: none;">
+                        <a href="#" class="nav-link" data-section="analytics">
+                            <i data-lucide="bar-chart-3"></i>
+                            <span class="nav-text">Analytics</span>
+                        </a>
+                    </li>
                     <li class="nav-item">
                         <a href="#" class="nav-link" data-section="script">
                             <i data-lucide="file-text"></i>
@@ -76,9 +82,10 @@
             <!-- User Section -->
             <div class="sidebar-footer">
                 <div class="user-info">
-                    <img src="assets/user-avatar.png" alt="Utilisateur" class="user-avatar">
+                    <img src="assets/default.webp" alt="Utilisateur" class="user-avatar">
                     <div class="user-details">
-                        <span class="user-name">Prénom Nom</span>
+                        <span class="user-first-name">Prénom</span>
+                        <span class="user-last-name">Nom</span>
                     </div>
                 </div>
                 <button class="logout-btn" id="logoutBtn">
@@ -213,6 +220,422 @@
                                 <p>Convertissez vos prospects en clients pour voir votre progression ici. Chaque conversion vous rapporte 250€.</p>
                             </div>
                             <canvas id="revenueChart"></canvas>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Analytics Section -->
+                <section class="content-section" id="analytics">
+                    <div class="analytics-loading" id="analyticsLoading" style="display: flex;">
+                        <div class="loading-spinner"></div>
+                    </div>
+                    
+                    <div class="analytics-content" id="analyticsContent" style="display: none;">
+                        <!-- Sélecteur d'utilisateur -->
+                        <!-- Tableau comparatif des utilisateurs -->
+                        <div class="analytics-comparison-section">
+                            <div class="analytics-section-header">
+                                <div>
+                                    <h3><i data-lucide="users"></i> Comparaison des performances</h3>
+                                    <p>Comparez les performances de tous les commerciaux sur la période sélectionnée</p>
+                                </div>
+                                <div class="comparison-controls">
+                                    <button class="btn btn-secondary" id="selectAllUsers">Tout sélectionner</button>
+                                    <button class="btn btn-secondary" id="unselectAllUsers">Tout désélectionner</button>
+                                </div>
+                            </div>
+
+                            <!-- Filtres de période et utilisateurs -->
+                            <div class="analytics-filters">
+                                <div class="analytics-filters-row">
+                                    <div class="user-filter-container">
+                                        <label for="userFilter" class="form-label">Analyser l'utilisateur :</label>
+                                        <select id="userFilter" class="form-select">
+                                            <option value="">Choisir un utilisateur...</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <div class="analytics-filters-row">
+                                    <div class="date-filter-shortcuts">
+                                        <button class="date-shortcut-btn" data-days="1">24h</button>
+                                        <button class="date-shortcut-btn" data-days="7">7 jours</button>
+                                        <button class="date-shortcut-btn" data-days="30">30 jours</button>
+                                        <button class="date-shortcut-btn" data-days="60">60 jours</button>
+                                        <button class="date-shortcut-btn" data-days="90">90 jours</button>
+                                    </div>
+                                    
+                                    <div class="date-range-container">
+                                        <div class="date-filter-container">
+                                            <label for="startDateFilter" class="form-label">Date de début :</label>
+                                            <input type="date" id="startDateFilter" class="form-input">
+                                        </div>
+                                        <div class="date-filter-container">
+                                            <label for="endDateFilter" class="form-label">Date de fin :</label>
+                                            <input type="date" id="endDateFilter" class="form-input">
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="filter-actions">
+                                        <button class="btn btn-primary" id="applyFilters">Appliquer</button>
+                                        <button class="btn btn-secondary" id="resetFilters">Réinitialiser</button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Graphique de comparaison -->
+                            <div class="chart-container">
+                                <div class="chart-header">
+                                    <h3>Évolution comparative des performances</h3>
+                                    <div class="comparison-chart-controls">
+                                        <label class="stats-toggle-item">
+                                            <input type="checkbox" id="toggleComparisonCalls" checked>
+                                            <span class="toggle-label">Nombre d'appels</span>
+                                        </label>
+                                        <label class="stats-toggle-item">
+                                            <input type="checkbox" id="toggleComparisonPickupRate" checked>
+                                            <span class="toggle-label">Taux de réponse</span>
+                                        </label>
+                                        <label class="stats-toggle-item">
+                                            <input type="checkbox" id="toggleComparisonMeetingRate" checked>
+                                            <span class="toggle-label">Taux de RDV</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div id="comparisonChartEmpty" class="chart-empty-state" style="display: none;">
+                                    <div class="chart-empty-icon">
+                                        <i data-lucide="users"></i>
+                                    </div>
+                                    <h4>Sélectionnez des utilisateurs à comparer</h4>
+                                    <p>Cochez les commerciaux dans le tableau ci-dessous pour voir leurs performances comparées.</p>
+                                </div>
+                                <canvas id="comparisonChart"></canvas>
+                            </div>
+                            
+                            <div class="comparison-table-container">
+                                <div class="comparison-loading" id="comparisonLoading" style="display: none;">
+                                    <div class="loading-spinner"></div>
+                                </div>
+                                
+                                <table class="comparison-table" id="comparisonTable">
+                                    <thead>
+                                        <tr>
+                                            <th class="comparison-checkbox-col">
+                                                <input type="checkbox" id="selectAllCheckbox" title="Sélectionner tout">
+                                            </th>
+                                            <th>Commercial</th>
+                                            <th>Appels</th>
+                                            <th>Chaleur moyenne</th>
+                                            <th>Taux de réponse</th>
+                                            <th>Taux de RDV</th>
+                                            <th>Prospects</th>
+                                            <th>Performance</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="comparisonTableBody">
+                                        <tr>
+                                            <td colspan="8" class="comparison-empty">
+                                                <i data-lucide="users"></i>
+                                                <p>Aucune donnée disponible pour cette période</p>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Section 1: Pipeline & Conversions -->
+                        <div class="analytics-section">
+                            <div class="analytics-section-header">
+                                <div>
+                                    <h3><i data-lucide="target"></i> Pipeline & Conversions</h3>
+                                    <p>Suivre l'efficacité du BDR à transformer ses leads</p>
+                                </div>
+                            </div>
+                            <div class="analytics-grid">
+                                <div class="kpi-card">
+                                    <div class="kpi-icon"><i data-lucide="user-plus"></i></div>
+                                    <div class="kpi-content">
+                                        <h4 id="newProspectsCount">0</h4>
+                                        <p>Nouveaux prospects créés</p>
+                                    </div>
+                                </div>
+                                <div class="kpi-card">
+                                    <div class="kpi-icon"><i data-lucide="check-circle"></i></div>
+                                    <div class="kpi-content">
+                                        <h4 id="qualificationRate">0%</h4>
+                                        <p>Taux de qualification</p>
+                                    </div>
+                                </div>
+                                <div class="kpi-card">
+                                    <div class="kpi-icon"><i data-lucide="calendar"></i></div>
+                                    <div class="kpi-content">
+                                        <h4 id="rdvConversionRate">0%</h4>
+                                        <p>Taux de conversion en RDV</p>
+                                    </div>
+                                </div>
+                                <div class="kpi-card">
+                                    <div class="kpi-icon"><i data-lucide="dollar-sign"></i></div>
+                                    <div class="kpi-content">
+                                        <h4 id="clientConversionRate">0%</h4>
+                                        <p>Taux de conversion en client</p>
+                                    </div>
+                                </div>
+                                <div class="kpi-card">
+                                    <div class="kpi-icon"><i data-lucide="clock"></i></div>
+                                    <div class="kpi-content">
+                                        <h4 id="avgConversionTime">0j</h4>
+                                        <p>Temps moyen de conversion</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="analytics-chart-container">
+                                <div class="chart-header">
+                                    <h3>Funnel de conversion</h3>
+                                </div>
+                                <canvas id="conversionFunnelChart"></canvas>
+                            </div>
+                            <div class="analytics-chart-container">
+                                <div class="chart-header">
+                                    <h3>Nouveaux prospects par jour</h3>
+                                </div>
+                                <canvas id="newProspectsChart"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Section 2: Activité d'appels -->
+                        <div class="analytics-section">
+                            <div class="analytics-section-header">
+                                <div>
+                                    <h3><i data-lucide="phone"></i> Activité d'appels</h3>
+                                    <p>Mesurer l'intensité et la qualité de la prospection</p>
+                                </div>
+                            </div>
+                            <div class="analytics-grid">
+                                <div class="kpi-card">
+                                    <div class="kpi-icon"><i data-lucide="phone-call"></i></div>
+                                    <div class="kpi-content">
+                                        <h4 id="callsCount">0</h4>
+                                        <p>Nombre d'appels passés</p>
+                                    </div>
+                                </div>
+                                <div class="kpi-card">
+                                    <div class="kpi-icon"><i data-lucide="timer"></i></div>
+                                    <div class="kpi-content">
+                                        <h4 id="avgCallDuration">0min</h4>
+                                        <p>Durée moyenne des appels</p>
+                                    </div>
+                                </div>
+                                <div class="kpi-card">
+                                    <div class="kpi-icon"><i data-lucide="thumbs-up"></i></div>
+                                    <div class="kpi-content">
+                                        <h4 id="positiveCallsRate">0%</h4>
+                                        <p>% d'appels avec statut positif</p>
+                                    </div>
+                                </div>
+                                <div class="kpi-card">
+                                    <div class="kpi-icon"><i data-lucide="thermometer"></i></div>
+                                    <div class="kpi-content">
+                                        <h4 id="avgTemperature">0</h4>
+                                        <p>Température moyenne des appels</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="analytics-chart-container">
+                                <div class="chart-header">
+                                    <h3>Appels par jour</h3>
+                                </div>
+                                <canvas id="callsPerDayChart"></canvas>
+                            </div>
+                            <div class="analytics-chart-container">
+                                <div class="chart-header">
+                                    <h3>Répartition par température</h3>
+                                </div>
+                                <canvas id="temperatureDistributionChart"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Section 3: Performance individuelle -->
+                        <div class="analytics-section">
+                            <div class="analytics-section-header">
+                                <div>
+                                    <h3><i data-lucide="user"></i> Performance individuelle</h3>
+                                    <p>Évaluer l'efficacité de chaque commercial</p>
+                                </div>
+                            </div>
+                            <div class="analytics-grid">
+                                <div class="kpi-card">
+                                    <div class="kpi-icon"><i data-lucide="users"></i></div>
+                                    <div class="kpi-content">
+                                        <h4 id="assignedProspects">0</h4>
+                                        <p>Prospects assignés</p>
+                                    </div>
+                                </div>
+                                <div class="kpi-card">
+                                    <div class="kpi-icon"><i data-lucide="calendar-check"></i></div>
+                                    <div class="kpi-content">
+                                        <h4 id="bookedRdv">0</h4>
+                                        <p>RDV bookés</p>
+                                    </div>
+                                </div>
+                                <div class="kpi-card">
+                                    <div class="kpi-icon"><i data-lucide="phone"></i></div>
+                                    <div class="kpi-content">
+                                        <h4 id="totalCallsMade">0</h4>
+                                        <p>Appels effectués</p>
+                                    </div>
+                                </div>
+                                <div class="kpi-card">
+                                    <div class="kpi-icon"><i data-lucide="trending-up"></i></div>
+                                    <div class="kpi-content">
+                                        <h4 id="globalConversionRate">0%</h4>
+                                        <p>Taux de conversion global</p>
+                                    </div>
+                                </div>
+                                <div class="kpi-card">
+                                    <div class="kpi-icon"><i data-lucide="activity"></i></div>
+                                    <div class="kpi-content">
+                                        <h4 id="followUpRate">0%</h4>
+                                        <p>Taux de suivi</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Section 4: Agenda & charge -->
+                        <div class="analytics-section">
+                            <div class="analytics-section-header">
+                                <div>
+                                    <h3><i data-lucide="calendar"></i> Agenda & charge</h3>
+                                    <p>Comprendre la répartition du temps et la charge quotidienne</p>
+                                </div>
+                            </div>
+                            <div class="analytics-grid">
+                                <div class="kpi-card">
+                                    <div class="kpi-icon"><i data-lucide="calendar-days"></i></div>
+                                    <div class="kpi-content">
+                                        <h4 id="totalEvents">0</h4>
+                                        <p>Nombre d'événements</p>
+                                    </div>
+                                </div>
+                                <div class="kpi-card">
+                                    <div class="kpi-icon"><i data-lucide="link"></i></div>
+                                    <div class="kpi-content">
+                                        <h4 id="linkedEventsRate">0%</h4>
+                                        <p>Événements liés à des prospects</p>
+                                    </div>
+                                </div>
+                                <div class="kpi-card">
+                                    <div class="kpi-icon"><i data-lucide="zap"></i></div>
+                                    <div class="kpi-content">
+                                        <h4 id="busyDaysCount">0</h4>
+                                        <p>Jours à forte charge</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="analytics-chart-container">
+                                <div class="chart-header">
+                                    <h3>Charge par jour (heatmap)</h3>
+                                </div>
+                                <canvas id="workloadHeatmapChart"></canvas>
+                            </div>
+                            <div class="analytics-chart-container">
+                                <div class="chart-header">
+                                    <h3>Événements par type</h3>
+                                </div>
+                                <canvas id="eventTypesChart"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Section 5: Réactivité & Hygiène -->
+                        <div class="analytics-section">
+                            <div class="analytics-section-header">
+                                <div>
+                                    <h3><i data-lucide="shield-check"></i> Réactivité & Hygiène du pipeline</h3>
+                                    <p>S'assurer que le BDR traite bien et rapidement ses leads</p>
+                                </div>
+                            </div>
+                            <div class="analytics-grid">
+                                <div class="kpi-card">
+                                    <div class="kpi-icon"><i data-lucide="clock"></i></div>
+                                    <div class="kpi-content">
+                                        <h4 id="avgFirstCallDelay">0h</h4>
+                                        <p>Délai moyen du 1er appel</p>
+                                    </div>
+                                </div>
+                                <div class="kpi-card">
+                                    <div class="kpi-icon"><i data-lucide="alert-triangle"></i></div>
+                                    <div class="kpi-content">
+                                        <h4 id="prospectsWithoutCall">0</h4>
+                                        <p>Prospects sans appel après 7j</p>
+                                    </div>
+                                </div>
+                                <div class="kpi-card">
+                                    <div class="kpi-icon"><i data-lucide="help-circle"></i></div>
+                                    <div class="kpi-content">
+                                        <h4 id="prospectsWithoutStatus">0</h4>
+                                        <p>Prospects sans pipeline_status</p>
+                                    </div>
+                                </div>
+                                <div class="kpi-card">
+                                    <div class="kpi-icon"><i data-lucide="archive"></i></div>
+                                    <div class="kpi-content">
+                                        <h4 id="activeArchivedRatio">0%</h4>
+                                        <p>Ratio actifs / archivés</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="analytics-chart-container">
+                                <div class="chart-header">
+                                    <h3>Délai du 1er appel (distribution)</h3>
+                                </div>
+                                <canvas id="firstCallDelayChart"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Section 6: Qualité des leads & canaux -->
+                        <div class="analytics-section">
+                            <div class="analytics-section-header">
+                                <div>
+                                    <h3><i data-lucide="filter"></i> Qualité des leads & canaux</h3>
+                                    <p>Identifier d'où viennent les bons leads et lesquels convertissent le mieux</p>
+                                </div>
+                            </div>
+                            <div class="analytics-grid">
+                                <div class="kpi-card">
+                                    <div class="kpi-icon"><i data-lucide="pie-chart"></i></div>
+                                    <div class="kpi-content">
+                                        <h4 id="leadSources">0</h4>
+                                        <p>Sources de leads identifiées</p>
+                                    </div>
+                                </div>
+                                <div class="kpi-card">
+                                    <div class="kpi-icon"><i data-lucide="trending-up"></i></div>
+                                    <div class="kpi-content">
+                                        <h4 id="bestSourceConversion">0%</h4>
+                                        <p>Meilleur taux de conversion</p>
+                                    </div>
+                                </div>
+                                <div class="kpi-card">
+                                    <div class="kpi-icon"><i data-lucide="thermometer"></i></div>
+                                    <div class="kpi-content">
+                                        <h4 id="avgTempBySource">0</h4>
+                                        <p>Température moyenne globale</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="analytics-chart-container">
+                                <div class="chart-header">
+                                    <h3>Répartition par segment</h3>
+                                </div>
+                                <canvas id="segmentDistributionChart"></canvas>
+                            </div>
+                            <div class="analytics-chart-container">
+                                <div class="chart-header">
+                                    <h3>Conversion par segment</h3>
+                                </div>
+                                <canvas id="conversionBySegmentChart"></canvas>
+                            </div>
                         </div>
                     </div>
                 </section>
@@ -483,7 +906,7 @@
     <div id="inviteModal" class="modal-overlay">
         <div class="modal-content">
             <div class="modal-header">
-                <h3 class="modal-title">Envoyer invitation RDV</h3>
+                <h3 class="modal-title">Envoyer un message</h3>
                 <button class="modal-close" id="closeInviteModal">
                     <i data-lucide="x"></i>
                 </button>
@@ -540,39 +963,63 @@
                 </button>
             </div>
             <div class="modal-body">
-                <div class="depot-options">
-                    <label class="depot-option" data-value="not_recorded">
-                        <input type="radio" name="depotStatus" value="not_recorded">
-                        <span class="depot-option-label">Je n'ai pas pu enregistrer</span>
-                    </label>
-                    <label class="depot-option" data-value="no_contact">
-                        <input type="radio" name="depotStatus" value="no_contact">
-                        <span class="depot-option-label">Aucun contact</span>
-                    </label>
-                    <label class="depot-option" data-value="recorded">
-                        <div class="depot-option-header">
-                            <input type="radio" name="depotStatus" value="recorded" checked>
-                            <span class="depot-option-label">J'ai l'enregistrement</span>
-                        </div>
-                        <div class="depot-upload-container" id="depotUploadContainer">
-                            <div class="depot-upload-zone">
-                                <input type="file" id="depotFileInput" accept=".wav,.mp3,.aiff,.aac,.ogg,.flac,.m4a,audio/wav,audio/mpeg,audio/mp3,audio/x-aiff,audio/aac,audio/ogg,audio/flac,audio/mp4,audio/x-m4a" style="display: none;">
-                                <div class="depot-upload-content">
-                                    <i data-lucide="upload" class="depot-upload-icon"></i>
-                                    <p class="depot-upload-text">Cliquez pour téléverser ou glissez-déposez le fichier</p>
-                                    <p class="depot-upload-hint">Formats acceptés : WAV, MP3, M4A</p>
+                <div class="depot-layout">
+                    <div class="depot-options-column">
+                        <label class="depot-option" data-value="not_recorded">
+                            <div class="depot-option-header">
+                                <input type="radio" name="depotStatus" value="not_recorded">
+                                <span class="depot-option-label">Je n'ai pas pu enregistrer</span>
+                            </div>
+                            <div class="depot-details-container" id="depotNotRecordedDetails" style="display: none;">
+                                <div class="depot-instructions-warning">
+                                    <i data-lucide="alert-circle"></i>
+                                    <div>
+                                        <strong>Soyez daprécis et exhaustif :</strong>
+                                        <ul>
+                                            <li>Décrivez tous les points abordés pendant l'appel</li>
+                                            <li>Mentionnez toutes les échéances évoquées</li>
+                                            <li>Si un RDV Visio est prévu, indiquez la date et l'heure exactes</li>
+                                            <li>Notez le niveau d'intérêt du prospect et les prochaines étapes</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                                <div class="form-group" style="margin-top: 1rem;">
+                                    <label class="form-label">Détails complets de l'appel <span style="color: #ef4444;">*</span></label>
+                                    <textarea id="notRecordedDetails" class="form-input" rows="6" placeholder="Ex: Appel avec M. Dupont, très intéressé par notre solution d'automatisation. Évoque un projet de refonte de leur processus de facturation prévu pour février 2025. RDV Visio fixé le 15/11/2025 à 14h30 pour présentation détaillée. Demande un devis d'ici fin novembre. Budget estimé 15-20K€. Contact décisionnaire, prochaine étape : envoyer présentation par email." required></textarea>
                                 </div>
                             </div>
+                        </label>
+                        <label class="depot-option" data-value="no_contact">
+                            <input type="radio" name="depotStatus" value="no_contact">
+                            <span class="depot-option-label">N'a pas décroché</span>
+                        </label>
+                        <label class="depot-option" data-value="recorded">
+                            <div class="depot-option-header">
+                                <input type="radio" name="depotStatus" value="recorded" checked>
+                                <span class="depot-option-label">J'ai l'enregistrement</span>
+                            </div>
+                            <div class="depot-upload-container" id="depotUploadContainer">
+                                <div class="depot-upload-zone">
+                                    <input type="file" id="depotFileInput" accept=".wav,.mp3,.aiff,.aac,.ogg,.flac,.m4a,audio/wav,audio/mpeg,audio/mp3,audio/x-aiff,audio/aac,audio/ogg,audio/flac,audio/mp4,audio/x-m4a" style="display: none;">
+                                    <div class="depot-upload-content">
+                                        <i data-lucide="upload" class="depot-upload-icon"></i>
+                                        <p class="depot-upload-text">Cliquez pour téléverser ou glissez-déposez le fichier</p>
+                                        <p class="depot-upload-hint">Formats acceptés : WAV, MP3, M4A</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </label>
+                    </div>
+                    <div class="depot-fields-column">
+                        <div class="depot-datetime">
+                            <label for="depotDateTime" class="depot-datetime-label">Date et heure de l'évènement</label>
+                            <input type="datetime-local" id="depotDateTime" class="depot-datetime-input">
                         </div>
-                    </label>
-                </div>
-                <div class="depot-datetime">
-                    <label for="depotDateTime" class="depot-datetime-label">Date et heure de l'évènement</label>
-                    <input type="datetime-local" id="depotDateTime" class="depot-datetime-input">
-                </div>
-                <div class="depot-note">
-                    <label for="depotNote" class="depot-note-label">Ajouter une note</label>
-                    <textarea id="depotNote" class="depot-note-input" placeholder="Saisissez votre note ici..." rows="4"></textarea>
+                        <div class="depot-note">
+                            <label for="depotNote" class="depot-note-label">Ajouter une note</label>
+                            <textarea id="depotNote" class="depot-note-input" placeholder="Saisissez votre note ici..." rows="4"></textarea>
+                        </div>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -603,22 +1050,30 @@
                     </div>
                     <div class="form-group">
                         <label for="prospectEmail" class="form-label">Email</label>
-                        <input type="email" id="prospectEmail" class="form-input" required>
+                        <input type="email" id="prospectEmail" class="form-input">
                     </div>
                     <div class="form-group">
                         <label for="prospectPhone" class="form-label">Téléphone</label>
-                        <input type="tel" id="prospectPhone" class="form-input" required>
+                        <input type="tel" id="prospectPhone" class="form-input">
                     </div>
                     <div class="form-group">
-                        <label for="prospectSociety" class="form-label">Entreprise</label>
-                        <div class="company-autocomplete-container">
-                            <input type="text" id="prospectSociety" class="form-input" required>
-                            <div class="company-autocomplete-dropdown" id="companyAutocompleteDropdown" style="display: none;"></div>
+                        <label for="prospectFirm" class="form-label">Entreprise</label>
+                        <div class="firm-selector-container">
+                            <select id="prospectFirm" class="form-input" required>
+                                <option value="">Choisir une entreprise...</option>
+                                <option value="new">➕ Nouvelle entreprise</option>
+                            </select>
+                            <div class="new-firm-input" id="newFirmInput" style="display: none;">
+                                <input type="text" id="newFirmName" class="form-input" placeholder="Nom de la nouvelle entreprise">
+                                <div class="firm-creation-info" id="firmCreationInfo" style="display: none;">
+                                    <small>Créée le: <span id="firmCreationDate"></span></small>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div class="form-group">
                         <label for="prospectRole" class="form-label">Rôle</label>
-                        <input type="text" id="prospectRole" class="form-input" required>
+                        <input type="text" id="prospectRole" class="form-input">
                     </div>
                     <div class="form-group">
                         <label for="prospectLinkedin" class="form-label">LinkedIn</label>
@@ -752,7 +1207,7 @@
             
             if (error || !session) {
                 // No session, redirect to login
-                window.location.href = '/';
+                window.location.href = 'login.html';
                 return;
             }
             
@@ -782,9 +1237,11 @@
                     window.currentUserId = userData.id;
                     
                     // Update user display with data from users table
-                    const fullName = userData.first_name && userData.last_name 
-                        ? `${userData.first_name} ${userData.last_name}`
-                        : userData.first_name || userData.last_name || authUser.email?.split('@')[0] || 'Utilisateur';
+                    const firstName = userData.first_name || '';
+                    const lastName = userData.last_name || '';
+                    const fullName = firstName && lastName 
+                        ? `${firstName} ${lastName}`
+                        : firstName || lastName || authUser.email?.split('@')[0] || 'Utilisateur';
                     
                     updateUserDisplay(fullName, userData.avatar_url, userData.email);
                     
@@ -793,6 +1250,14 @@
                     
                     // Display mission if available
                     displayMission(userData.mission, userData.first_name);
+                    
+                    // Show analytics tab if user is admin
+                    if (userData.role === 'admin') {
+                        const analyticsNavItem = document.getElementById('analyticsNavItem');
+                        if (analyticsNavItem) {
+                            analyticsNavItem.style.display = 'block';
+                        }
+                    }
                 } else {
                     // No user data found, use auth email
                     updateUserDisplay(authUser.email?.split('@')[0] || 'Utilisateur', null, authUser.email);
@@ -834,15 +1299,25 @@
 
         // Update user display in sidebar
         function updateUserDisplay(name, avatarUrl, email) {
-            const userNameEl = document.querySelector('.user-name');
+            const userFirstNameEl = document.querySelector('.user-first-name');
+            const userLastNameEl = document.querySelector('.user-last-name');
             const userAvatarEl = document.querySelector('.user-avatar');
             
-            if (userNameEl) {
-                userNameEl.textContent = name;
+            // Split name into first and last name
+            const nameParts = name ? name.split(' ') : [];
+            const firstName = nameParts[0] || '';
+            const lastName = nameParts.slice(1).join(' ') || '';
+            
+            if (userFirstNameEl) {
+                userFirstNameEl.textContent = firstName;
             }
             
-            if (userAvatarEl && avatarUrl) {
-                userAvatarEl.src = avatarUrl;
+            if (userLastNameEl) {
+                userLastNameEl.textContent = lastName;
+            }
+            
+            if (userAvatarEl) {
+                userAvatarEl.src = avatarUrl || 'assets/default.webp';
                 userAvatarEl.alt = name;
             }
         }
@@ -889,6 +1364,8 @@
     </div>
     
     <script src="script.js"></script>
+N'a pas décroché
+    <script src="analytics.js"></script>
     <script>
         // Initialize Lucide icons
         lucide.createIcons();

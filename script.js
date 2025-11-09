@@ -216,6 +216,7 @@ function switchToSection(sectionId) {
             // Update page title
             const sectionNames = {
                 'dashboard': 'Dashboard',
+                'analytics': 'Analytics',
                 'disponibilites': 'Disponibilités',
                 'rappels': 'Rappels',
                 'historique': 'Historique des appels',
@@ -285,6 +286,17 @@ function switchToSection(sectionId) {
             // Load historique if historique section is shown
             if (sectionId === 'historique') {
                 loadHistorique();
+            }
+            
+            // Load analytics if analytics section is shown
+            if (sectionId === 'analytics') {
+                // Initialize analytics manager if not already done
+                if (window.initializeAnalyticsIfNeeded) {
+                    window.initializeAnalyticsIfNeeded();
+                }
+                if (window.analyticsManager) {
+                    window.analyticsManager.hideAnalyticsLoading();
+                }
             }
             
         // Save active section to localStorage
@@ -535,6 +547,276 @@ const API = {
         init();
     }
 })();
+
+// ===== FIRMS MANAGEMENT =====
+let allFirms = [];
+
+// Load all firms from database
+async function loadFirms() {
+    if (!window.supabaseClient) {
+        console.error('Supabase client not available');
+        return [];
+    }
+
+    try {
+        const { data, error } = await window.supabaseClient
+            .from('crm_firmes')
+            .select('*')
+            .order('name', { ascending: true });
+
+        if (error) {
+            console.error('Error loading firms:', error);
+            return [];
+        }
+
+        allFirms = data || [];
+        return allFirms;
+    } catch (error) {
+        console.error('Error in loadFirms:', error);
+        return [];
+    }
+}
+
+// Add new firm to database
+async function addFirm(firmName) {
+    if (!window.supabaseClient) {
+        console.error('Supabase client not available');
+        return null;
+    }
+
+    try {
+        const { data, error } = await window.supabaseClient
+            .from('crm_firmes')
+            .insert([{ name: firmName.trim() }])
+            .select()
+            .single();
+
+        if (error) {
+            console.error('Error adding firm:', error);
+            return null;
+        }
+
+        // Add to local array
+        allFirms.push(data);
+        allFirms.sort((a, b) => a.name.localeCompare(b.name));
+        
+        console.log('Firm added successfully:', data);
+        return data;
+    } catch (error) {
+        console.error('Error in addFirm:', error);
+        return null;
+    }
+}
+
+// Get firm by ID
+function getFirmById(firmId) {
+    return allFirms.find(firm => firm.id === firmId);
+}
+
+// Format firm creation date
+function formatFirmCreationDate(createdAt) {
+    if (!createdAt) return '';
+    const date = new Date(createdAt);
+    return date.toLocaleDateString('fr-FR', { 
+        day: '2-digit', 
+        month: '2-digit', 
+        year: 'numeric' 
+    });
+}
+
+// Show firm edit modal for prospect
+async function showFirmEditModal(prospectId, currentFirmId) {
+    // Load all firms
+    await loadFirms();
+    
+    // Create modal content
+    const modalHtml = `
+        <div class="modal-overlay" id="firmEditModal">
+            <div class="modal-content modal-content-small">
+                <div class="modal-header">
+                    <h3 class="modal-title">Modifier l'entreprise</h3>
+                    <button class="modal-close" id="closeFirmEditModal">
+                        <i data-lucide="x"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="editProspectFirm" class="form-label">Entreprise</label>
+                        <div class="firm-selector-container">
+                            <select id="editProspectFirm" class="form-input" required>
+                                <option value="">Aucune entreprise</option>
+                                <option value="new">➕ Nouvelle entreprise</option>
+                            </select>
+                            <div class="new-firm-input" id="editNewFirmInput" style="display: none;">
+                                <input type="text" id="editNewFirmName" class="form-input" placeholder="Nom de la nouvelle entreprise">
+                                <div class="firm-creation-info" id="editFirmCreationInfo" style="display: none;">
+                                    <small>Créée le: <span id="editFirmCreationDate"></span></small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" id="cancelFirmEdit">Annuler</button>
+                    <button class="btn btn-primary" id="confirmFirmEdit">Confirmer</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Add modal to DOM
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    const modal = document.getElementById('firmEditModal');
+    const firmSelect = document.getElementById('editProspectFirm');
+    const newFirmInput = document.getElementById('editNewFirmInput');
+    const newFirmName = document.getElementById('editNewFirmName');
+    const firmCreationInfo = document.getElementById('editFirmCreationInfo');
+    const firmCreationDate = document.getElementById('editFirmCreationDate');
+    
+    // Populate firms dropdown
+    allFirms.forEach(firm => {
+        const option = document.createElement('option');
+        option.value = firm.id;
+        option.textContent = firm.name;
+        option.setAttribute('data-created', firm.created_at);
+        firmSelect.appendChild(option);
+    });
+    
+    // Set current selection
+    if (currentFirmId) {
+        firmSelect.value = currentFirmId;
+        const selectedOption = firmSelect.querySelector(`option[value="${currentFirmId}"]`);
+        if (selectedOption && selectedOption.getAttribute('data-created')) {
+            firmCreationDate.textContent = formatFirmCreationDate(selectedOption.getAttribute('data-created'));
+            firmCreationInfo.style.display = 'block';
+        }
+    }
+    
+    // Initialize firm selector
+    firmSelect.addEventListener('change', (e) => {
+        const selectedValue = e.target.value;
+        
+        if (selectedValue === 'new') {
+            newFirmInput.style.display = 'block';
+            newFirmName.focus();
+            firmCreationInfo.style.display = 'none';
+        } else if (selectedValue) {
+            const selectedOption = firmSelect.querySelector(`option[value="${selectedValue}"]`);
+            if (selectedOption && selectedOption.getAttribute('data-created')) {
+                firmCreationDate.textContent = formatFirmCreationDate(selectedOption.getAttribute('data-created'));
+                firmCreationInfo.style.display = 'block';
+            }
+            newFirmInput.style.display = 'none';
+        } else {
+            newFirmInput.style.display = 'none';
+            firmCreationInfo.style.display = 'none';
+        }
+    });
+    
+    // Handle new firm creation
+    newFirmName.addEventListener('blur', async () => {
+        const firmName = newFirmName.value.trim();
+        if (firmName) {
+            const existingFirm = allFirms.find(firm => 
+                firm.name.toLowerCase() === firmName.toLowerCase()
+            );
+            
+            if (existingFirm) {
+                firmSelect.value = existingFirm.id;
+                newFirmInput.style.display = 'none';
+                firmCreationDate.textContent = formatFirmCreationDate(existingFirm.created_at);
+                firmCreationInfo.style.display = 'block';
+            } else {
+                const newFirm = await addFirm(firmName);
+                if (newFirm) {
+                    const option = document.createElement('option');
+                    option.value = newFirm.id;
+                    option.textContent = newFirm.name;
+                    option.setAttribute('data-created', newFirm.created_at);
+                    firmSelect.appendChild(option);
+                    
+                    firmSelect.value = newFirm.id;
+                    newFirmInput.style.display = 'none';
+                    firmCreationDate.textContent = formatFirmCreationDate(newFirm.created_at);
+                    firmCreationInfo.style.display = 'block';
+                    
+                    showToast('Nouvelle entreprise ajoutée', 'success');
+                }
+            }
+        }
+    });
+    
+    // Handle confirm
+    document.getElementById('confirmFirmEdit').addEventListener('click', async () => {
+        const selectedFirmId = firmSelect.value || null;
+        
+        // Handle new firm if needed
+        let finalFirmId = selectedFirmId;
+        if (selectedFirmId === 'new') {
+            const firmName = newFirmName.value.trim();
+            if (firmName) {
+                const newFirm = await addFirm(firmName);
+                if (newFirm) {
+                    finalFirmId = newFirm.id;
+                } else {
+                    alert('Erreur lors de la création de l\'entreprise');
+                    return;
+                }
+            } else {
+                alert('Veuillez saisir le nom de la nouvelle entreprise');
+                return;
+            }
+        }
+        
+        // Update prospect in database
+        const { error } = await window.supabaseClient
+            .from('crm_prospects')
+            .update({ firm_id: finalFirmId })
+            .eq('id', prospectId);
+        
+        if (error) {
+            console.error('Error updating prospect firm:', error);
+            showToast('Erreur lors de la mise à jour', 'error');
+            return;
+        }
+        
+        // Update local data
+        const prospect = allProspects.find(p => p.id == prospectId);
+        if (prospect) {
+            prospect.firm_id = finalFirmId;
+            if (finalFirmId) {
+                const firm = getFirmById(finalFirmId);
+                if (firm) {
+                    prospect.crm_firmes = firm;
+                }
+            } else {
+                prospect.crm_firmes = null;
+            }
+        }
+        
+        // Refresh prospect details
+        showProspectDetails(prospectId);
+        
+        // Close modal
+        modal.remove();
+        
+        showToast('Entreprise mise à jour', 'success');
+    });
+    
+    // Handle cancel/close
+    const closeModal = () => modal.remove();
+    document.getElementById('cancelFirmEdit').addEventListener('click', closeModal);
+    document.getElementById('closeFirmEditModal').addEventListener('click', closeModal);
+    
+    // Show modal
+    modal.classList.add('active');
+    
+    // Reinitialize icons
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+}
 
 // Chart instance
 let revenueChart = null;
@@ -1365,6 +1647,7 @@ async function loadProspects() {
             return;
         }
 
+        // Charger d'abord les prospects
         const { data: prospects, error } = await window.supabaseClient
             .from('crm_prospects')
             .select('*')
@@ -1378,12 +1661,45 @@ async function loadProspects() {
 
         if (error) {
             console.error('Error loading prospects:', error);
+            
+            // Afficher les détails de l'erreur dans une boîte de dialogue
+            const errorDetails = `
+Erreur lors du chargement des prospects
+
+Détails de l'erreur:
+- Message: ${error.message || 'Non spécifié'}
+- Code: ${error.code || 'Non spécifié'}
+- Détails: ${error.details || 'Non spécifié'}
+- Hint: ${error.hint || 'Non spécifié'}
+
+User ID: ${window.currentUserId}
+Supabase Client: ${typeof window.supabaseClient !== 'undefined' ? 'Disponible' : 'Non disponible'}
+
+Objet erreur complet:
+${JSON.stringify(error, null, 2)}
+            `.trim();
+            
+            alert(errorDetails);
             displayProspectsError('Erreur lors du chargement des prospects');
             return;
         }
 
+        // Charger toutes les entreprises
+        await loadFirms();
+
+        // Associer manuellement les entreprises aux prospects
+        const prospectsWithFirms = (prospects || []).map(prospect => {
+            if (prospect.firm_id) {
+                const firm = getFirmById(prospect.firm_id);
+                if (firm) {
+                    return { ...prospect, crm_firmes: firm };
+                }
+            }
+            return { ...prospect, crm_firmes: null };
+        });
+
         // Store all prospects for search
-        allProspects = prospects || [];
+        allProspects = prospectsWithFirms;
 
         // Apply filters after loading
         applyProspectsFilters();
@@ -1392,6 +1708,21 @@ async function loadProspects() {
         prospectsLoading.style.display = 'none';
         if (sectionHeader) sectionHeader.style.display = 'flex';
         prospectsTableContainer.style.display = 'block';
+        
+        // Afficher les détails de l'erreur JavaScript dans une boîte de dialogue
+        const errorDetails = `
+Erreur JavaScript dans loadProspects
+
+Type d'erreur: ${error.name || 'Non spécifié'}
+Message: ${error.message || 'Non spécifié'}
+Stack trace:
+${error.stack || 'Non disponible'}
+
+User ID: ${window.currentUserId}
+Supabase Client: ${typeof window.supabaseClient !== 'undefined' ? 'Disponible' : 'Non disponible'}
+        `.trim();
+        
+        alert(errorDetails);
         displayProspectsError('Une erreur est survenue');
     }
 }
@@ -1530,8 +1861,14 @@ function createProspectRow(prospect, isArchived = false) {
     // Format email in lowercase
     const email = prospect.email ? prospect.email.toLowerCase() : '-';
     
-    // Format society with first letter capitalized
-    const society = prospect.society ? capitalizeFirstLetter(prospect.society.toLowerCase()) : '-';
+    // Format firm name
+    let firmDisplay = '-';
+    if (prospect.crm_firmes && prospect.crm_firmes.name) {
+        const firmName = capitalizeFirstLetter(prospect.crm_firmes.name.toLowerCase());
+        firmDisplay = firmName;
+    } else if (prospect.firm_id) {
+        firmDisplay = '<small>(entreprise non trouvée)</small>';
+    }
     
     // Format role
     const role = prospect.role || '-';
@@ -1583,10 +1920,10 @@ function createProspectRow(prospect, isArchived = false) {
     
     // Show unarchive button for archived prospects, archive button for active ones
     const archiveButton = isArchived
-        ? `<button class="btn-icon btn-unarchive" title="Désarchiver" data-prospect-id="${prospect.id}">
+        ? `<button class="btn-icon btn-unarchive" title="📂 Désarchiver - Remettre ce prospect dans la liste active" data-prospect-id="${prospect.id}">
             <i data-lucide="archive-restore"></i>
         </button>`
-        : `<button class="btn-icon btn-archive" title="Archiver" data-prospect-id="${prospect.id}">
+        : `<button class="btn-icon btn-archive" title="📁 Archiver - Retirer ce prospect de la liste active sans le supprimer" data-prospect-id="${prospect.id}">
             <i data-lucide="archive"></i>
         </button>`;
     
@@ -1598,23 +1935,23 @@ function createProspectRow(prospect, isArchived = false) {
                 <span>${fullName}</span>
             </div>
         </td>
-        <td>${society}</td>
+        <td>${firmDisplay}</td>
         <td>${phone}</td>
         <td>${email}</td>
         <td>${linkedinIcon}</td>
         <td><span class="status-badge">${role}</span></td>
         <td>
-            <button class="btn-icon btn-record" title="Enregistrer" data-prospect-id="${prospect.id}">
+            <button class="btn-icon btn-record" title="🎙️ Enregistrer l'appel - Lance l'enregistrement audio de votre conversation" data-prospect-id="${prospect.id}">
                 <i data-lucide="mic"></i>
             </button>
-            <button class="btn-icon btn-confirm btn-depot" title="Confirmation/Dépôt" data-prospect-id="${prospect.id}">
+            <button class="btn-icon btn-confirm btn-depot" title="📤 Dépôt/Confirmation - Valider l'appel et uploader l'enregistrement" data-prospect-id="${prospect.id}">
                 <i data-lucide="upload"></i>
             </button>
-            <button class="btn-icon btn-invite" title="Envoyer invitation RDV" data-prospect-id="${prospect.id}">
+            <button class="btn-icon btn-invite" title="📧 Invitation RDV - Envoyer la présentation ou l'invitation Teams" data-prospect-id="${prospect.id}">
                 <i data-lucide="mail"></i>
             </button>
             ${archiveButton}
-            <button class="btn-icon btn-delete" title="Supprimer" data-prospect-id="${prospect.id}" data-prospect-name="${(firstName + ' ' + lastName).trim() || 'ce prospect'}">
+            <button class="btn-icon btn-delete" title="🗑️ Supprimer définitivement ce prospect" data-prospect-id="${prospect.id}" data-prospect-name="${(firstName + ' ' + lastName).trim() || 'ce prospect'}">
                 <i data-lucide="trash-2"></i>
             </button>
         </td>
@@ -2384,6 +2721,12 @@ function showDepotModal(prospectId) {
     }
     document.getElementById('depotNote').value = '';
     
+    // Reset not_recorded details
+    const notRecordedDetails = document.getElementById('notRecordedDetails');
+    if (notRecordedDetails) {
+        notRecordedDetails.value = '';
+    }
+    
     // Reset file input
     const fileInput = document.getElementById('depotFileInput');
     if (fileInput) {
@@ -2426,6 +2769,7 @@ function showDepotModal(prospectId) {
 function updateDepotOptionUI() {
     const selectedValue = document.querySelector('input[name="depotStatus"]:checked')?.value;
     const uploadContainer = document.getElementById('depotUploadContainer');
+    const notRecordedDetails = document.getElementById('depotNotRecordedDetails');
     
     // Remove selected class from all options
     document.querySelectorAll('.depot-option').forEach(option => {
@@ -2451,6 +2795,15 @@ function updateDepotOptionUI() {
         } else {
             uploadContainer.style.display = 'none';
             recordedOption.classList.remove('has-upload-visible');
+        }
+    }
+    
+    // Show/hide details container for not_recorded
+    if (notRecordedDetails) {
+        if (selectedValue === 'not_recorded') {
+            notRecordedDetails.style.display = 'block';
+        } else {
+            notRecordedDetails.style.display = 'none';
         }
     }
 }
@@ -2666,6 +3019,7 @@ async function confirmDepot() {
     const note = document.getElementById('depotNote').value;
     const fileInput = document.getElementById('depotFileInput');
     const file = fileInput?.files[0] || null;
+    const notRecordedDetails = document.getElementById('notRecordedDetails')?.value || '';
     
     // Get Supabase session token
     let supabaseToken = null;
@@ -2680,14 +3034,22 @@ async function confirmDepot() {
         }
     }
     
-    // Map deposit type
+    // Map deposit type - use values as specified: recorded, not_recorded, not_responded
     const depositTypeMap = {
         'recorded': 'recorded',
         'recording_available': 'recorded', // Recording available is also treated as recorded
         'not_recorded': 'not_recorded',
-        'no_contact': 'no_contact'
+        'no_contact': 'not_responded' // Changed from no_contact to not_responded
     };
     const depositType = depositTypeMap[selectedStatus] || selectedStatus;
+    
+    // Validate not_recorded details
+    if (depositType === 'not_recorded') {
+        if (!notRecordedDetails || notRecordedDetails.trim().length < 50) {
+            alert('⚠️ Détails incomplets\n\nVous devez fournir un compte-rendu détaillé de l\'appel (minimum 50 caractères).\n\nN\'oubliez pas d\'inclure :\n• Tous les points abordés\n• Les échéances évoquées\n• La date/heure du RDV Visio si fixé\n• Le niveau d\'intérêt et les prochaines étapes');
+            return;
+        }
+    }
     
     // Validate required fields - try multiple sources for prospect ID
     let prospectId = currentDepotId;
@@ -2753,7 +3115,7 @@ async function confirmDepot() {
     formData.append('token', supabaseToken);
     formData.append('prospect_id', prospectId.toString());
     formData.append('user_id', window.currentUserId.toString());
-    formData.append('deposit_type', depositType);
+    formData.append('type', depositType); // Changed from deposit_type to type
     
     // Add optional fields
     if (dateTime) {
@@ -2761,6 +3123,11 @@ async function confirmDepot() {
     }
     if (note) {
         formData.append('note', note);
+    }
+    
+    // Add call details for not_recorded type
+    if (depositType === 'not_recorded' && notRecordedDetails) {
+        formData.append('call_details', notRecordedDetails);
     }
     
     // Disable confirm button during request
@@ -2772,7 +3139,7 @@ async function confirmDepot() {
     }
     
     try {
-        const response = await fetch('https://host.taskalys.app/webhook/deposit', {
+        const response = await fetch('https://host.taskalys.app/webhook-test/deposit', {
             method: 'POST',
             body: formData
         });
@@ -2819,38 +3186,100 @@ function showProspectDetails(prospectId) {
     const fullName = `${prospect.first_name || ''} ${prospect.last_name || ''}`.trim() || 'Prospect';
     title.textContent = fullName;
 
-    // Add action buttons to header
+    // Add action buttons to header (same as in prospects table)
     const headerActions = document.getElementById('prospectDetailsHeaderActions');
     if (headerActions) {
+        // Check if prospect is archived
+        const isArchived = prospect.archived === true || prospect.archived === 'true';
+        
+        // Show unarchive button for archived prospects, archive button for active ones
+        const archiveButton = isArchived
+            ? `<button class="btn-icon btn-unarchive-detail" title="📂 Désarchiver - Remettre ce prospect dans la liste active" data-prospect-id="${prospectId}">
+                <i data-lucide="archive-restore"></i>
+            </button>`
+            : `<button class="btn-icon btn-archive-detail" title="📁 Archiver - Retirer ce prospect de la liste active sans le supprimer" data-prospect-id="${prospectId}">
+                <i data-lucide="archive"></i>
+            </button>`;
+        
         headerActions.innerHTML = `
-            <button class="btn btn-secondary btn-depot-detail" data-prospect-id="${prospectId}">
-                <i data-lucide="upload"></i>
-                Dépôt
-            </button>
-            <button class="btn btn-primary btn-record-detail" data-prospect-id="${prospectId}">
+            <button class="btn-icon btn-record-detail" title="🎙️ Enregistrer l'appel - Lance l'enregistrement audio de votre conversation" data-prospect-id="${prospectId}">
                 <i data-lucide="mic"></i>
-                Enregistrer l'appel
+            </button>
+            <button class="btn-icon btn-depot-detail" title="📤 Dépôt/Confirmation - Valider l'appel et uploader l'enregistrement" data-prospect-id="${prospectId}">
+                <i data-lucide="upload"></i>
+            </button>
+            <button class="btn-icon btn-invite-detail" title="📧 Invitation RDV - Envoyer la présentation ou l'invitation Teams" data-prospect-id="${prospectId}">
+                <i data-lucide="mail"></i>
+            </button>
+            ${archiveButton}
+            <button class="btn-icon btn-delete-detail" title="🗑️ Supprimer définitivement ce prospect" data-prospect-id="${prospectId}">
+                <i data-lucide="trash-2"></i>
             </button>
         `;
         
         // Add event listeners for action buttons
-        const depotDetailBtn = headerActions.querySelector('.btn-depot-detail');
         const recordDetailBtn = headerActions.querySelector('.btn-record-detail');
-        
-        if (depotDetailBtn) {
-            depotDetailBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const btnProspectId = parseInt(depotDetailBtn.getAttribute('data-prospect-id'));
-                showDepotModal(btnProspectId); // Pass ID before hiding details
-                hideProspectDetails();
-            });
-        }
+        const depotDetailBtn = headerActions.querySelector('.btn-depot-detail');
+        const inviteDetailBtn = headerActions.querySelector('.btn-invite-detail');
+        const archiveDetailBtn = headerActions.querySelector('.btn-archive-detail');
+        const unarchiveDetailBtn = headerActions.querySelector('.btn-unarchive-detail');
+        const deleteDetailBtn = headerActions.querySelector('.btn-delete-detail');
         
         if (recordDetailBtn) {
             recordDetailBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const btnProspectId = parseInt(recordDetailBtn.getAttribute('data-prospect-id'));
-                showRecordModal(btnProspectId); // Pass ID before hiding details
+                showRecordModal(btnProspectId);
+                hideProspectDetails();
+            });
+        }
+        
+        if (depotDetailBtn) {
+            depotDetailBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const btnProspectId = parseInt(depotDetailBtn.getAttribute('data-prospect-id'));
+                showDepotModal(btnProspectId);
+                hideProspectDetails();
+            });
+        }
+        
+        if (inviteDetailBtn) {
+            inviteDetailBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const btnProspectId = parseInt(inviteDetailBtn.getAttribute('data-prospect-id'));
+                showInviteModal(btnProspectId);
+                hideProspectDetails();
+            });
+        }
+        
+        if (archiveDetailBtn) {
+            archiveDetailBtn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const btnProspectId = parseInt(archiveDetailBtn.getAttribute('data-prospect-id'));
+                await archiveProspect(btnProspectId);
+                hideProspectDetails();
+                loadProspects();
+            });
+        }
+        
+        if (unarchiveDetailBtn) {
+            unarchiveDetailBtn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const btnProspectId = parseInt(unarchiveDetailBtn.getAttribute('data-prospect-id'));
+                await unarchiveProspect(btnProspectId);
+                hideProspectDetails();
+                loadProspects();
+            });
+        }
+        
+        if (deleteDetailBtn) {
+            deleteDetailBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const btnProspectId = parseInt(deleteDetailBtn.getAttribute('data-prospect-id'));
+                const firstName = prospect.first_name || '';
+                const lastName = prospect.last_name || '';
+                const prospectName = `${firstName} ${lastName}`.trim() || 'ce prospect';
+                showDeleteConfirm(btnProspectId, prospectName);
                 hideProspectDetails();
             });
         }
@@ -2893,9 +3322,19 @@ function fillProspectInfo(prospect) {
     const lastName = prospect.last_name || '';
     const email = prospect.email || '';
     const phone = prospect.phone || '';
-    const society = prospect.society || '';
     const role = prospect.role || '';
     const linkedin = prospect.linkedin || '';
+    
+    // Format firm display
+    let firmDisplay = '-';
+    let firmId = null;
+    if (prospect.crm_firmes && prospect.crm_firmes.name) {
+        firmDisplay = `${prospect.crm_firmes.name} <small>(ID: ${prospect.crm_firmes.id})</small>`;
+        firmId = prospect.crm_firmes.id;
+    } else if (prospect.firm_id) {
+        firmDisplay = `<small>ID: ${prospect.firm_id} (nom non trouvé)</small>`;
+        firmId = prospect.firm_id;
+    }
     
     // Check if prospect has been called
     const called = prospect.called === true || prospect.called === 'true';
@@ -2921,7 +3360,7 @@ function fillProspectInfo(prospect) {
         </div>
         <div class="prospect-info-item">
             <span class="prospect-info-label">Entreprise</span>
-            <span class="prospect-info-value editable-field" data-field="society" data-prospect-id="${prospect.id}" contenteditable="false">${society || '-'}</span>
+            <span class="prospect-info-value firm-field" data-field="firm_id" data-prospect-id="${prospect.id}" data-firm-id="${firmId || ''}">${firmDisplay}</span>
         </div>
         <div class="prospect-info-item">
             <span class="prospect-info-label">Rôle</span>
@@ -2945,6 +3384,16 @@ function fillProspectInfo(prospect) {
     // Reinitialize Lucide icons for called status
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();
+    }
+    
+    // Add special click event listener for firm field
+    const firmField = grid.querySelector('.firm-field');
+    if (firmField) {
+        firmField.style.cursor = 'pointer';
+        firmField.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            await showFirmEditModal(prospect.id, firmId);
+        });
     }
     
     // Add click event listeners to editable fields
@@ -3598,7 +4047,7 @@ function hideSkeleton(container) {
 }
 
 // Show add prospect modal
-function showAddProspectModal() {
+async function showAddProspectModal() {
     const modal = document.getElementById('addProspectModal');
     const form = document.getElementById('addProspectForm');
     
@@ -3607,10 +4056,13 @@ function showAddProspectModal() {
     // Reset form
     form.reset();
     
+    // Load and populate firms
+    await loadAndPopulateFirms();
+    
     modal.classList.add('active');
     
-    // Initialize company autocomplete
-    initializeCompanyAutocomplete();
+    // Initialize firm selector
+    initializeFirmSelector();
     
     // Reinitialize icons
     if (typeof lucide !== 'undefined') {
@@ -3618,97 +4070,99 @@ function showAddProspectModal() {
     }
 }
 
-// Initialize company autocomplete functionality
-function initializeCompanyAutocomplete() {
-    const societyInput = document.getElementById('prospectSociety');
-    const dropdown = document.getElementById('companyAutocompleteDropdown');
+// Load and populate firms in the dropdown
+async function loadAndPopulateFirms() {
+    const firmSelect = document.getElementById('prospectFirm');
+    if (!firmSelect) return;
+
+    // Load firms from database
+    await loadFirms();
     
-    if (!societyInput || !dropdown) return;
+    // Clear existing options except default ones
+    firmSelect.innerHTML = '<option value="">Choisir une entreprise...</option><option value="new">➕ Nouvelle entreprise</option>';
     
-    // Get unique companies from existing prospects
-    const companies = [...new Set(allProspects
-        .filter(p => p.society && p.society.trim() !== '')
-        .map(p => p.society.trim())
-    )].sort();
-    
-    let activeIndex = -1;
-    
-    // Input event listener
-    societyInput.addEventListener('input', (e) => {
-        const value = e.target.value.toLowerCase().trim();
-        
-        if (value.length === 0) {
-            dropdown.style.display = 'none';
-            return;
-        }
-        
-        // Filter companies
-        const filtered = companies.filter(company => 
-            company.toLowerCase().includes(value)
-        );
-        
-        if (filtered.length === 0) {
-            dropdown.style.display = 'none';
-            return;
-        }
-        
-        // Display dropdown
-        dropdown.innerHTML = filtered.map(company => 
-            `<div class="company-autocomplete-item">${company}</div>`
-        ).join('');
-        
-        dropdown.style.display = 'block';
-        activeIndex = -1;
-        
-        // Add click listeners
-        dropdown.querySelectorAll('.company-autocomplete-item').forEach((item, index) => {
-            item.addEventListener('click', () => {
-                societyInput.value = item.textContent;
-                dropdown.style.display = 'none';
-            });
-        });
+    // Add firms to dropdown
+    allFirms.forEach(firm => {
+        const option = document.createElement('option');
+        option.value = firm.id;
+        option.textContent = firm.name;
+        option.setAttribute('data-created', firm.created_at);
+        firmSelect.appendChild(option);
     });
+}
+
+// Initialize firm selector functionality  
+function initializeFirmSelector() {
+    const firmSelect = document.getElementById('prospectFirm');
+    const newFirmInput = document.getElementById('newFirmInput');
+    const newFirmName = document.getElementById('newFirmName');
+    const firmCreationInfo = document.getElementById('firmCreationInfo');
+    const firmCreationDate = document.getElementById('firmCreationDate');
     
-    // Keyboard navigation
-    societyInput.addEventListener('keydown', (e) => {
-        const items = dropdown.querySelectorAll('.company-autocomplete-item');
+    if (!firmSelect || !newFirmInput || !newFirmName) return;
+    
+    // Handle firm selection change
+    firmSelect.addEventListener('change', (e) => {
+        const selectedValue = e.target.value;
         
-        if (dropdown.style.display === 'none' || items.length === 0) return;
-        
-        if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            activeIndex = (activeIndex + 1) % items.length;
-            updateActiveItem(items, activeIndex);
-        } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            activeIndex = activeIndex <= 0 ? items.length - 1 : activeIndex - 1;
-            updateActiveItem(items, activeIndex);
-        } else if (e.key === 'Enter' && activeIndex >= 0) {
-            e.preventDefault();
-            items[activeIndex].click();
-        } else if (e.key === 'Escape') {
-            dropdown.style.display = 'none';
-        }
-    });
-    
-    // Close dropdown when clicking outside
-    document.addEventListener('click', (e) => {
-        if (!societyInput.contains(e.target) && !dropdown.contains(e.target)) {
-            dropdown.style.display = 'none';
-        }
-    });
-    
-    // Helper function to update active item
-    function updateActiveItem(items, index) {
-        items.forEach((item, i) => {
-            if (i === index) {
-                item.classList.add('active');
-                item.scrollIntoView({ block: 'nearest' });
-            } else {
-                item.classList.remove('active');
+        if (selectedValue === 'new') {
+            // Show input for new firm
+            newFirmInput.style.display = 'block';
+            newFirmName.focus();
+            firmCreationInfo.style.display = 'none';
+        } else if (selectedValue) {
+            // Show creation date for existing firm
+            const selectedOption = firmSelect.querySelector(`option[value="${selectedValue}"]`);
+            if (selectedOption && selectedOption.getAttribute('data-created')) {
+                const createdAt = selectedOption.getAttribute('data-created');
+                firmCreationDate.textContent = formatFirmCreationDate(createdAt);
+                firmCreationInfo.style.display = 'block';
             }
-        });
-    }
+            newFirmInput.style.display = 'none';
+        } else {
+            // Hide both
+            newFirmInput.style.display = 'none';
+            firmCreationInfo.style.display = 'none';
+        }
+    });
+    
+    // Handle new firm name input
+    newFirmName.addEventListener('blur', async () => {
+        const firmName = newFirmName.value.trim();
+        if (firmName) {
+            // Check if firm already exists
+            const existingFirm = allFirms.find(firm => 
+                firm.name.toLowerCase() === firmName.toLowerCase()
+            );
+            
+            if (existingFirm) {
+                // Select existing firm
+                firmSelect.value = existingFirm.id;
+                newFirmInput.style.display = 'none';
+                firmCreationDate.textContent = formatFirmCreationDate(existingFirm.created_at);
+                firmCreationInfo.style.display = 'block';
+            } else {
+                // Add new firm
+                const newFirm = await addFirm(firmName);
+                if (newFirm) {
+                    // Add option to select
+                    const option = document.createElement('option');
+                    option.value = newFirm.id;
+                    option.textContent = newFirm.name;
+                    option.setAttribute('data-created', newFirm.created_at);
+                    firmSelect.appendChild(option);
+                    
+                    // Select the new firm
+                    firmSelect.value = newFirm.id;
+                    newFirmInput.style.display = 'none';
+                    firmCreationDate.textContent = formatFirmCreationDate(newFirm.created_at);
+                    firmCreationInfo.style.display = 'block';
+                    
+                    showToast('Nouvelle entreprise ajoutée', 'success');
+                }
+            }
+        }
+    });
 }
 
 // Hide add prospect modal
@@ -3758,9 +4212,37 @@ async function submitAddProspect() {
     const lastName = document.getElementById('prospectLastName').value.trim();
     const email = document.getElementById('prospectEmail').value.trim();
     const phone = document.getElementById('prospectPhone').value.trim();
-    const society = document.getElementById('prospectSociety').value.trim();
+    const firmSelect = document.getElementById('prospectFirm');
+    const firmId = firmSelect?.value || null;
     const role = document.getElementById('prospectRole').value.trim();
     const linkedin = document.getElementById('prospectLinkedin')?.value.trim() || '';
+    
+    // Handle new firm creation if needed
+    let finalFirmId = firmId;
+    if (firmId === 'new') {
+        const newFirmName = document.getElementById('newFirmName');
+        if (newFirmName && newFirmName.value.trim()) {
+            const newFirm = await addFirm(newFirmName.value.trim());
+            if (newFirm) {
+                finalFirmId = newFirm.id;
+            } else {
+                alert('Erreur lors de la création de l\'entreprise');
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalText;
+                return;
+            }
+        } else {
+            alert('Veuillez saisir le nom de la nouvelle entreprise');
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+            return;
+        }
+    } else if (!firmId) {
+        alert('Veuillez sélectionner une entreprise');
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
+        return;
+    }
     
     // Basic validation
     if (!firstName || !lastName) {
@@ -3801,7 +4283,7 @@ async function submitAddProspect() {
                         last_name: lastName,
                         email: email || null,
                         phone: phone || null,
-                        society: society || null,
+                        firm_id: finalFirmId,
                         role: role || null,
                         linkedin: linkedin || null,
                         called: false,
@@ -4851,7 +5333,7 @@ if (logoutBtn) {
             }
         }
         // Redirect to login page
-        window.location.href = '/?logout=true';
+        window.location.href = 'login.html?logout=true';
     });
 }
 
@@ -5295,7 +5777,7 @@ async function addRappelsEvent(eventData) {
     }
 
     try {
-        // Prepare payload with hours field and linked prospect
+        // Prepare payload with hours field, linked prospect, and validated status
         const payload = {
             user_id: window.currentUserId,
             name: eventData.name,
@@ -5303,7 +5785,8 @@ async function addRappelsEvent(eventData) {
             end: eventData.end,
             type: eventData.type || 'autre',
             hours: eventData.hours || null,
-            linked_prospect_id: eventData.linked_prospect_id || null
+            linked_prospect_id: eventData.linked_prospect_id || null,
+            validated: false
         };
         
         console.log('=== ADDING EVENT ===');
@@ -5336,6 +5819,34 @@ async function addRappelsEvent(eventData) {
     }
 }
 
+// Validate event (mark as completed)
+async function validateRappelsEvent(eventId) {
+    if (!window.supabaseClient) {
+        console.error('Supabase client not available');
+        return false;
+    }
+
+    try {
+        const { error } = await window.supabaseClient
+            .from('crm_calendars')
+            .update({ validated: true })
+            .eq('id', eventId);
+
+        if (error) {
+            console.error('Error validating rappels event:', error);
+            showToast('Erreur lors de la validation', 'error');
+            return false;
+        }
+
+        showToast('Événement marqué comme fait', 'success');
+        return true;
+    } catch (error) {
+        console.error('Error in validateRappelsEvent:', error);
+        showToast('Une erreur est survenue', 'error');
+        return false;
+    }
+}
+
 // Delete event from database
 async function deleteRappelsEvent(eventId) {
     if (!window.supabaseClient) {
@@ -5355,7 +5866,7 @@ async function deleteRappelsEvent(eventId) {
             return false;
         }
 
-        showToast('Événement supprimé', 'success');
+        showToast('Événement supprimé définitivement', 'success');
         return true;
     } catch (error) {
         console.error('Error in deleteRappelsEvent:', error);
@@ -5423,12 +5934,22 @@ function renderRappelsSemaineView() {
             daysIndicator = `<span class="rappels-days-indicator">➔ ${diffDays}j</span>`;
         }
 
-        // Get events for this day
-        const dayEvents = rappelsEvents.filter(event => {
-            const eventStart = parseLocalISOString(event.start);
-            if (!eventStart) return false;
-            return eventStart.toDateString() === currentDay.toDateString();
-        });
+        // Get events for this day and sort by time
+        const dayEvents = rappelsEvents
+            .filter(event => {
+                const eventStart = parseLocalISOString(event.start);
+                if (!eventStart) return false;
+                return eventStart.toDateString() === currentDay.toDateString();
+            })
+            .sort((a, b) => {
+                // Sort by start time to maintain chronological order
+                const timeA = parseLocalISOString(a.start);
+                const timeB = parseLocalISOString(b.start);
+                if (!timeA && !timeB) return 0;
+                if (!timeA) return 1;
+                if (!timeB) return -1;
+                return timeA - timeB;
+            });
 
         html += `
             <div class="calendar-day ${isToday ? 'today' : ''}" data-date="${dateStr}">
@@ -5461,16 +5982,21 @@ function renderRappelsSemaineView() {
                             const formattedName = formatEventNameWithMentions(event.name, event.linked_prospect_id);
                             
                             return `
-                                <div class="calendar-event rappels-event-item ${typeClass}" data-event-id="${event.id}">
+                                <div class="calendar-event rappels-event-item ${typeClass} ${event.validated ? 'validated' : ''}" data-event-id="${event.id}">
                                     <div class="rappels-event-header">
                                         <span class="rappels-event-type-label">${typeLabel}</span>
                                     </div>
                                     <div class="rappels-event-name">${formattedName}</div>
                                     <div class="rappels-event-footer">
-                                        ${timeDisplay ? `<span class="rappels-event-time-badge">${timeDisplay}</span>` : '<span class="rappels-event-time-badge">Toute la journée</span>'}
-                                        <button class="rappels-event-delete" data-event-id="${event.id}" title="Marquer comme fait">
-                                            <i data-lucide="check"></i>
-                                        </button>
+                                        ${timeDisplay ? `<span class="rappels-event-time-badge">${timeDisplay}</span>` : ''}
+                                        <div class="rappels-event-actions">
+                                            <button class="rappels-event-validate" data-event-id="${event.id}" title="Marquer comme fait" ${event.validated ? 'style="opacity: 0.3; pointer-events: none;"' : ''}>
+                                                <i data-lucide="check"></i>
+                                            </button>
+                                            <button class="rappels-event-delete" data-event-id="${event.id}" title="Supprimer définitivement">
+                                                <i data-lucide="x"></i>
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             `;
@@ -5600,12 +6126,27 @@ function attachRappelsEventListeners() {
         });
     });
 
+    // Validate event buttons
+    const validateButtons = document.querySelectorAll('.rappels-event-validate');
+    validateButtons.forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const eventId = parseInt(btn.getAttribute('data-event-id'));
+            const success = await validateRappelsEvent(eventId);
+            if (success) {
+                await renderRappelsCalendar();
+            }
+        });
+    });
+
     // Delete event buttons
     const deleteButtons = document.querySelectorAll('.rappels-event-delete, .rappels-event-delete-small');
     deleteButtons.forEach(btn => {
         btn.addEventListener('click', async (e) => {
             e.stopPropagation();
             const eventId = parseInt(btn.getAttribute('data-event-id'));
+            
+            // Supprimer directement sans confirmation
             const success = await deleteRappelsEvent(eventId);
             if (success) {
                 await renderRappelsCalendar();
@@ -5636,20 +6177,42 @@ async function showMentionDropdown(dropdown, searchText, inputField, selectedMen
         return;
     }
 
-    // Build dropdown HTML
-    let html = '<div class="mention-section-title">Contacts & Entreprises</div>';
+    // Build dropdown HTML with separate sections for contacts and companies
+    let html = '<div class="mention-section-title">Contacts</div>';
     
+    // Add contacts (names)
     filteredProspects.slice(0, 10).forEach(prospect => {
-        const fullName = `${prospect.firstname || ''} ${prospect.lastname || ''}`.trim();
-        const society = prospect.society || '';
-        const displayName = society ? `${fullName} - ${society}` : fullName;
-        
-        html += `
-            <div class="mention-item" data-id="${prospect.id}" data-name="${displayName}" data-type="prospect">
-                <div class="mention-name">${displayName}</div>
-            </div>
-        `;
+        const fullName = `${prospect.first_name || ''} ${prospect.last_name || ''}`.trim();
+        if (fullName) {
+            const firmName = prospect.crm_firmes?.name || (prospect.firm_id ? `Entreprise ID: ${prospect.firm_id}` : '');
+            html += `
+                <div class="mention-item" data-id="${prospect.id}" data-name="${fullName}" data-type="contact">
+                    <div class="mention-name">${fullName}</div>
+                    ${firmName ? `<div class="mention-society">${firmName}</div>` : ''}
+                </div>
+            `;
+        }
     });
+    
+    // Add companies section - get unique firms from prospects
+    const firms = [...new Map(
+        filteredProspects
+            .filter(p => p.crm_firmes?.name)
+            .map(p => [p.crm_firmes.id, p.crm_firmes])
+    ).values()];
+    
+    if (firms.length > 0) {
+        html += '<div class="mention-section-title">Entreprises</div>';
+        firms.slice(0, 10).forEach(firm => {
+            // Find a prospect from this company to get the ID
+            const prospectFromFirm = filteredProspects.find(p => p.crm_firmes?.id === firm.id);
+            html += `
+                <div class="mention-item" data-id="${prospectFromFirm.id}" data-name="${firm.name}" data-type="company">
+                    <div class="mention-name">${firm.name}</div>
+                </div>
+            `;
+        });
+    }
 
     dropdown.innerHTML = html;
     dropdown.style.display = 'block';
@@ -5710,10 +6273,12 @@ function formatEventNameWithMentions(eventName, linkedProspectId) {
     if (!eventName) return '';
     
     // Find all @mentions in the text
-    const mentionRegex = /@([^@\s]+(?:\s+[^@\s]+)*)/g;
+    // Match @ followed by 1 or 2 words (prénom + nom)
+    // A word can contain letters (with accents), hyphens, and apostrophes
+    const mentionRegex = /@([A-Za-zÀ-ÿ\-']+(?:\s+[A-Za-zÀ-ÿ\-']+)?)/g;
     
     return eventName.replace(mentionRegex, (match) => {
-        return `<span class="event-mention">${match}</span>`;
+        return `<span class="event-mention-bold">${match}</span>`;
     });
 }
 
@@ -5846,7 +6411,18 @@ function showRappelsAddInput(dateStr, buttonEl) {
                 e.preventDefault();
                 activeItem.click();
             } else if (e.key === 'Escape') {
+                e.preventDefault();
                 dropdown.style.display = 'none';
+            }
+        } else {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                // Si Enter est pressé et le dropdown n'est pas visible, publier l'événement
+                e.preventDefault();
+                handleConfirm();
+            } else if (e.key === 'Escape') {
+                // Fermer le formulaire avec Escape
+                e.preventDefault();
+                input.remove();
             }
         }
     });
@@ -5862,24 +6438,40 @@ function showRappelsAddInput(dateStr, buttonEl) {
         const eventTime = timeField.value;
         const eventType = typeField.value;
         
-        // Combine date and time into datetime format WITHOUT timezone conversion
+        // Combine date and time into datetime format WITH backend timezone adjustment
         let startDateTime, endDateTime;
         
         if (eventTime) {
-            // If time is provided, create proper local datetime
+            // If time is provided, create proper local datetime and add 1 day for backend storage
             const [hours, minutes] = eventTime.split(':');
-            // Parse date parts and add 1 day to compensate for timezone issues
             const [year, month, day] = dateStr.split('-').map(Number);
-            const date = new Date(year, month - 1, day + 1, parseInt(hours), parseInt(minutes), 0, 0);
+            console.log('=== DEBUG EVENT CREATION WITH TIME ===');
+            console.log('dateStr:', dateStr);
+            console.log('parsed parts:', { year, month, day });
+            const date = new Date(year, month - 1, day, parseInt(hours), parseInt(minutes), 0, 0);
+            console.log('date before +1:', date.toString());
+            // Add 1 day to fix timezone shift issue
+            date.setDate(date.getDate() + 1);
+            console.log('date after +1:', date.toString());
             startDateTime = toLocalISOString(date);
             endDateTime = toLocalISOString(date);
+            console.log('final ISO string:', startDateTime);
         } else {
-            // If no time, use start of day in local timezone and add 1 day
+            // If no time, use start of day and add 1 day for backend storage
             const [year, month, day] = dateStr.split('-').map(Number);
-            const date = new Date(year, month - 1, day + 1, 0, 0, 0, 0);
+            console.log('=== DEBUG EVENT CREATION WITHOUT TIME ===');
+            console.log('dateStr:', dateStr);
+            console.log('parsed parts:', { year, month, day });
+            const date = new Date(year, month - 1, day, 0, 0, 0, 0);
+            console.log('date before +1:', date.toString());
+            // Add 1 day to fix timezone shift issue
+            date.setDate(date.getDate() + 1);
+            console.log('date after +1:', date.toString());
             startDateTime = toLocalISOString(date);
-            const endDate = new Date(year, month - 1, day + 1, 23, 59, 59, 999);
+            const endDate = new Date(date);
+            endDate.setHours(23, 59, 59, 999);
             endDateTime = toLocalISOString(endDate);
+            console.log('final ISO strings:', { startDateTime, endDateTime });
         }
         
         // Extract linked prospect IDs from mentions
@@ -5908,16 +6500,6 @@ function showRappelsAddInput(dateStr, buttonEl) {
 
     confirmBtn.addEventListener('click', handleConfirm);
     
-    inputField.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && e.ctrlKey) {
-            e.preventDefault();
-            handleConfirm();
-        } else if (e.key === 'Escape') {
-            e.preventDefault();
-            input.remove();
-        }
-    });
-
     // Click outside to cancel
     setTimeout(() => {
         document.addEventListener('click', function outsideClickHandler(e) {
