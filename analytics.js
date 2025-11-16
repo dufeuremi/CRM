@@ -153,9 +153,14 @@ class AnalyticsManager {
         }
 
         // Comparison chart controls
+        const comparisonPeriod = document.getElementById('comparisonPeriod');
         const toggleComparisonCalls = document.getElementById('toggleComparisonCalls');
         const toggleComparisonPickupRate = document.getElementById('toggleComparisonPickupRate');
         const toggleComparisonMeetingRate = document.getElementById('toggleComparisonMeetingRate');
+
+        if (comparisonPeriod) {
+            comparisonPeriod.addEventListener('change', () => this.updateComparisonChart());
+        }
 
         if (toggleComparisonCalls) {
             toggleComparisonCalls.addEventListener('change', () => this.updateComparisonChart());
@@ -167,6 +172,12 @@ class AnalyticsManager {
 
         if (toggleComparisonMeetingRate) {
             toggleComparisonMeetingRate.addEventListener('change', () => this.updateComparisonChart());
+        }
+
+        // Call Activity period selector
+        const callActivityPeriod = document.getElementById('callActivityPeriod');
+        if (callActivityPeriod) {
+            callActivityPeriod.addEventListener('change', () => this.loadCallActivity());
         }
 
         // Date shortcut buttons
@@ -345,7 +356,24 @@ class AnalyticsManager {
     // Section 2: Call Activity
     async loadCallActivity() {
         try {
-            const dateFilter = this.getDateFilter();
+            // Get period selection
+            const periodSelect = document.getElementById('callActivityPeriod');
+            const period = periodSelect?.value || '30';
+            
+            // Calculate date filter based on period
+            let dateFilter = { start: null, end: null };
+            if (period !== 'all') {
+                const daysAgo = parseInt(period);
+                const endDate = new Date();
+                const startDate = new Date();
+                startDate.setDate(endDate.getDate() - daysAgo);
+                
+                dateFilter = {
+                    start: startDate.toISOString(),
+                    end: endDate.toISOString()
+                };
+            }
+            
             let query = this.supabase
                 .from('crm_calls')
                 .select('*')
@@ -533,10 +561,15 @@ class AnalyticsManager {
                 Math.round((activeProspects / (activeProspects + archivedProspects)) * 100) : 0;
 
             // Update UI
-            document.getElementById('avgFirstCallDelay').textContent = `${avgFirstCallDelay}h`;
-            document.getElementById('prospectsWithoutCall').textContent = prospectsWithoutCall;
-            document.getElementById('prospectsWithoutStatus').textContent = prospectsWithoutStatus;
-            document.getElementById('activeArchivedRatio').textContent = `${activeArchivedRatio}%`;
+            const avgFirstCallDelayEl = document.getElementById('avgFirstCallDelay');
+            const prospectsWithoutCallEl = document.getElementById('prospectsWithoutCall');
+            const prospectsWithoutStatusEl = document.getElementById('prospectsWithoutStatus');
+            const activeArchivedRatioEl = document.getElementById('activeArchivedRatio');
+            
+            if (avgFirstCallDelayEl) avgFirstCallDelayEl.textContent = `${avgFirstCallDelay}h`;
+            if (prospectsWithoutCallEl) prospectsWithoutCallEl.textContent = prospectsWithoutCall;
+            if (prospectsWithoutStatusEl) prospectsWithoutStatusEl.textContent = prospectsWithoutStatus;
+            if (activeArchivedRatioEl) activeArchivedRatioEl.textContent = `${activeArchivedRatio}%`;
 
             // Create first call delay chart
             this.createFirstCallDelayChart(firstCallDelays);
@@ -1330,9 +1363,25 @@ class AnalyticsManager {
         if (chartCanvas) chartCanvas.style.display = 'block';
 
         try {
-            // Get data for selected users
-            const dateFilter = this.getDateFilter();
-            console.log('Date filter:', dateFilter);
+            // Get period selection for comparison chart
+            const periodSelect = document.getElementById('comparisonPeriod');
+            const period = periodSelect?.value || '30';
+            
+            // Calculate date filter based on period
+            let dateFilter = { start: null, end: null };
+            if (period !== 'all') {
+                const daysAgo = parseInt(period);
+                const endDate = new Date();
+                const startDate = new Date();
+                startDate.setDate(endDate.getDate() - daysAgo);
+                
+                dateFilter = {
+                    start: startDate.toISOString(),
+                    end: endDate.toISOString()
+                };
+            }
+            
+            console.log('Comparison period:', period, 'Date filter:', dateFilter);
             
             const userPromises = selectedUserIds.map(userId => this.getUserTimeSeriesData(userId, dateFilter));
             const userTimeSeriesData = await Promise.all(userPromises);
@@ -1580,6 +1629,10 @@ class AnalyticsManager {
                         title: {
                             display: true,
                             text: 'Date'
+                        },
+                        ticks: {
+                            maxRotation: 45,
+                            minRotation: 45
                         }
                     },
                     y: {

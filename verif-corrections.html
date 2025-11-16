@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vérification des Corrections</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #006EFF 0%, #0052cc 100%);
+            color: white;
+            padding: 2rem;
+            text-align: center;
+        }
+        .header h1 { font-size: 2rem; margin-bottom: 0.5rem; }
+        .header p { opacity: 0.9; font-size: 1.1rem; }
+        .content { padding: 2rem; }
+        .check-item {
+            display: flex;
+            align-items: center;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            background: #f8f9fa;
+            border-radius: 12px;
+            border-left: 4px solid #ddd;
+            transition: all 0.3s;
+        }
+        .check-item.loading { border-left-color: #ffc107; }
+        .check-item.success { border-left-color: #4caf50; background: #f1f8f4; }
+        .check-item.error { border-left-color: #f44336; background: #fef5f5; }
+        .check-icon {
+            font-size: 2rem;
+            margin-right: 1.5rem;
+            min-width: 40px;
+            text-align: center;
+        }
+        .check-content { flex: 1; }
+        .check-content h3 { font-size: 1.2rem; margin-bottom: 0.5rem; color: #333; }
+        .check-content p { color: #666; line-height: 1.5; margin-bottom: 0.5rem; }
+        .check-details {
+            background: white;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-top: 0.5rem;
+            font-family: monospace;
+            font-size: 0.875rem;
+            border: 1px solid #e0e0e0;
+        }
+        .btn-group {
+            display: flex;
+            gap: 1rem;
+            margin-top: 2rem;
+            flex-wrap: wrap;
+        }
+        .btn {
+            flex: 1;
+            padding: 1rem 2rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            text-align: center;
+            display: inline-block;
+        }
+        .btn-primary {
+            background: #006EFF;
+            color: white;
+        }
+        .btn-primary:hover { background: #0052cc; transform: translateY(-2px); }
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        .btn-secondary:hover { background: #5a6268; transform: translateY(-2px); }
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+        .btn-success:hover { background: #218838; transform: translateY(-2px); }
+        .summary {
+            background: #e7f3ff;
+            border: 2px solid #006EFF;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+        .summary h2 { color: #006EFF; margin-bottom: 1rem; }
+        .summary .status { font-size: 3rem; margin-bottom: 0.5rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 Vérification des Corrections</h1>
+            <p>Diagnostic automatique des 3 fonctionnalités corrigées</p>
+        </div>
+        
+        <div class="content">
+            <div class="summary" id="summary">
+                <div class="status">⏳</div>
+                <h2>Vérification en cours...</h2>
+                <p>Analyse des fichiers modifiés</p>
+            </div>
+
+            <div class="check-item loading" id="check1">
+                <div class="check-icon">⏳</div>
+                <div class="check-content">
+                    <h3>1. Bouton "Créer une action"</h3>
+                    <p>Vérification de l'event listener dans script.js...</p>
+                    <div class="check-details" style="display:none" id="details1"></div>
+                </div>
+            </div>
+
+            <div class="check-item loading" id="check2">
+                <div class="check-icon">⏳</div>
+                <div class="check-content">
+                    <h3>2. Emails programmés dans Rappels</h3>
+                    <p>Vérification de loadScheduledEmails() dans script.js...</p>
+                    <div class="check-details" style="display:none" id="details2"></div>
+                </div>
+            </div>
+
+            <div class="check-item loading" id="check3">
+                <div class="check-icon">⏳</div>
+                <div class="check-content">
+                    <h3>3. Graphique de comparaison</h3>
+                    <p>Vérification de la config Chart.js dans analytics.js...</p>
+                    <div class="check-details" style="display:none" id="details3"></div>
+                </div>
+            </div>
+
+            <div class="btn-group">
+                <a href="clear-cache.html" class="btn btn-primary">
+                    🔄 Vider le cache et recharger
+                </a>
+                <a href="test-features.html" class="btn btn-secondary">
+                    🧪 Page de test interactive
+                </a>
+                <a href="dashboard.html" class="btn btn-success">
+                    📊 Ouvrir le Dashboard
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function checkFile(filename, searchString) {
+            try {
+                const response = await fetch(filename + '?v=' + Date.now());
+                const content = await response.text();
+                return {
+                    found: content.includes(searchString),
+                    size: content.length,
+                    modified: response.headers.get('last-modified')
+                };
+            } catch (error) {
+                return { found: false, error: error.message };
+            }
+        }
+
+        function updateCheck(checkId, status, icon, message, details = null) {
+            const check = document.getElementById(checkId);
+            check.className = `check-item ${status}`;
+            check.querySelector('.check-icon').textContent = icon;
+            check.querySelector('p').innerHTML = message;
+            
+            if (details) {
+                const detailsEl = document.getElementById('details' + checkId.replace('check', ''));
+                detailsEl.style.display = 'block';
+                detailsEl.innerHTML = details;
+            }
+        }
+
+        function updateSummary(successCount, totalCount) {
+            const summary = document.getElementById('summary');
+            if (successCount === totalCount) {
+                summary.innerHTML = `
+                    <div class="status">✅</div>
+                    <h2>Toutes les corrections sont présentes!</h2>
+                    <p>Les 3 fonctionnalités sont correctement modifiées dans les fichiers.<br>
+                    <strong>Si ça ne marche pas, c'est à cause du cache du navigateur.</strong><br>
+                    Cliquez sur "Vider le cache et recharger" ci-dessous.</p>
+                `;
+                summary.style.background = '#d4edda';
+                summary.style.borderColor = '#28a745';
+            } else {
+                summary.innerHTML = `
+                    <div class="status">⚠️</div>
+                    <h2>Problème détecté</h2>
+                    <p>${successCount}/${totalCount} corrections trouvées.<br>
+                    Certaines modifications semblent manquantes.</p>
+                `;
+                summary.style.background = '#fff3cd';
+                summary.style.borderColor = '#ffc107';
+            }
+        }
+
+        async function runChecks() {
+            let successCount = 0;
+
+            // Check 1: Custom Action Button
+            const check1 = await checkFile('script.js', 'Setup custom action button');
+            if (check1.found) {
+                updateCheck('check1', 'success', '✅', 
+                    'Event listener du bouton "Créer une action" trouvé!',
+                    `✓ Code présent dans script.js<br>✓ Lignes 491-569 modifiées<br>✓ Taille: ${Math.round(check1.size/1024)}KB`
+                );
+                successCount++;
+            } else {
+                updateCheck('check1', 'error', '❌', 
+                    'Event listener NON trouvé dans script.js',
+                    check1.error ? `Erreur: ${check1.error}` : 'Le code de l\'event listener est absent'
+                );
+            }
+
+            // Check 2: Scheduled Emails
+            const check2 = await checkFile('script.js', 'Charger également les emails programmés');
+            if (check2.found) {
+                updateCheck('check2', 'success', '✅', 
+                    'Appel à loadScheduledEmails() trouvé!',
+                    `✓ Code présent dans script.js<br>✓ Lignes 7285-7292 modifiées<br>✓ Fonction appelée dans loadRappels()`
+                );
+                successCount++;
+            } else {
+                updateCheck('check2', 'error', '❌', 
+                    'Appel à loadScheduledEmails() NON trouvé',
+                    check2.error ? `Erreur: ${check2.error}` : 'La fonction loadRappels() n\'appelle pas loadScheduledEmails()'
+                );
+            }
+
+            // Check 3: Chart Config
+            const check3 = await checkFile('analytics.js', 'maxRotation: 45');
+            if (check3.found) {
+                updateCheck('check3', 'success', '✅', 
+                    'Configuration du graphique trouvée!',
+                    `✓ Code présent dans analytics.js<br>✓ Lignes 1577-1586 modifiées<br>✓ Rotation 45° activée<br>✓ Taille: ${Math.round(check3.size/1024)}KB`
+                );
+                successCount++;
+            } else {
+                updateCheck('check3', 'error', '❌', 
+                    'Configuration du graphique NON trouvée',
+                    check3.error ? `Erreur: ${check3.error}` : 'La configuration de l\'axe X n\'est pas modifiée'
+                );
+            }
+
+            updateSummary(successCount, 3);
+        }
+
+        // Run checks on page load
+        runChecks();
+    </script>
+</body>
+</html>

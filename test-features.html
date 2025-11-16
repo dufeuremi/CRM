@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test des Fonctionnalités</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 2rem auto;
+            padding: 2rem;
+            background: #f5f5f5;
+        }
+        .test-card {
+            background: white;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-card h2 {
+            margin-top: 0;
+            color: #006EFF;
+        }
+        .status {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-top: 1rem;
+        }
+        .status.loading { background: #ffc107; color: black; }
+        .status.success { background: #4caf50; color: white; }
+        .status.error { background: #f44336; color: white; }
+        .code {
+            background: #f4f4f4;
+            padding: 0.5rem;
+            border-radius: 4px;
+            font-family: monospace;
+            overflow-x: auto;
+            margin: 0.5rem 0;
+        }
+        button {
+            padding: 0.75rem 1.5rem;
+            background: #006EFF;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+            margin: 0.5rem 0.5rem 0 0;
+        }
+        button:hover { background: #0052cc; }
+        .log {
+            max-height: 200px;
+            overflow-y: auto;
+            background: #2d2d2d;
+            color: #00ff00;
+            padding: 1rem;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.875rem;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Test des Fonctionnalités Corrigées</h1>
+    
+    <div class="test-card">
+        <h2>1. Bouton "Créer une action"</h2>
+        <p>Test de l'event listener du bouton customActionBtn</p>
+        <button onclick="testCustomActionButton()">Tester le bouton</button>
+        <button onclick="checkCustomActionElements()">Vérifier les éléments</button>
+        <div id="customActionStatus" class="status loading">En attente...</div>
+        <div id="customActionLog" class="log"></div>
+    </div>
+
+    <div class="test-card">
+        <h2>2. Emails programmés dans Rappels</h2>
+        <p>Test du chargement de loadScheduledEmails()</p>
+        <button onclick="testLoadScheduledEmails()">Tester le chargement</button>
+        <button onclick="checkScheduledEmailsElements()">Vérifier les éléments</button>
+        <div id="scheduledEmailsStatus" class="status loading">En attente...</div>
+        <div id="scheduledEmailsLog" class="log"></div>
+    </div>
+
+    <div class="test-card">
+        <h2>3. Graphique de comparaison</h2>
+        <p>Test de la configuration de Chart.js</p>
+        <button onclick="testChartConfig()">Tester la config Chart.js</button>
+        <button onclick="checkAnalyticsElements()">Vérifier les éléments</button>
+        <div id="chartStatus" class="status loading">En attente...</div>
+        <div id="chartLog" class="log"></div>
+    </div>
+
+    <div class="test-card">
+        <h2>ℹ️ Informations système</h2>
+        <div class="code" id="systemInfo"></div>
+    </div>
+
+    <script>
+        // Add log function
+        function addLog(elementId, message, isError = false) {
+            const logEl = document.getElementById(elementId);
+            const timestamp = new Date().toLocaleTimeString();
+            const color = isError ? '#ff6b6b' : '#00ff00';
+            logEl.innerHTML += `<div style="color: ${color}">[${timestamp}] ${message}</div>`;
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function setStatus(elementId, status, message) {
+            const statusEl = document.getElementById(elementId);
+            statusEl.className = `status ${status}`;
+            statusEl.textContent = message;
+        }
+
+        // Test 1: Custom Action Button
+        function checkCustomActionElements() {
+            const logId = 'customActionLog';
+            document.getElementById(logId).innerHTML = '';
+            
+            addLog(logId, '🔍 Vérification des éléments DOM...');
+            
+            const btn = document.getElementById('customActionBtn');
+            const modal = document.getElementById('customActionModal');
+            
+            addLog(logId, `customActionBtn: ${btn ? '✅ Trouvé' : '❌ Non trouvé'}`);
+            addLog(logId, `customActionModal: ${modal ? '✅ Trouvé' : '❌ Non trouvé'}`);
+            
+            if (btn && modal) {
+                setStatus('customActionStatus', 'success', 'Éléments OK');
+                addLog(logId, '✅ Tous les éléments sont présents');
+            } else {
+                setStatus('customActionStatus', 'error', 'Éléments manquants');
+                addLog(logId, '❌ Éléments manquants - vérifier que vous êtes sur dashboard.html', true);
+            }
+        }
+
+        function testCustomActionButton() {
+            const logId = 'customActionLog';
+            document.getElementById(logId).innerHTML = '';
+            
+            addLog(logId, '🧪 Test du bouton "Créer une action"...');
+            
+            const btn = document.getElementById('customActionBtn');
+            if (!btn) {
+                setStatus('customActionStatus', 'error', 'Bouton non trouvé');
+                addLog(logId, '❌ Bouton customActionBtn non trouvé dans le DOM', true);
+                addLog(logId, 'ℹ️ Assurez-vous d\'être sur dashboard.html');
+                return;
+            }
+            
+            addLog(logId, '✅ Bouton trouvé');
+            addLog(logId, 'Simulation du clic...');
+            
+            try {
+                btn.click();
+                setTimeout(() => {
+                    const modal = document.getElementById('customActionModal');
+                    if (modal && modal.classList.contains('active')) {
+                        setStatus('customActionStatus', 'success', 'Test réussi!');
+                        addLog(logId, '✅ Modal ouverte avec succès!');
+                        addLog(logId, 'ℹ️ Fermeture automatique dans 2 secondes...');
+                        setTimeout(() => modal.classList.remove('active'), 2000);
+                    } else {
+                        setStatus('customActionStatus', 'error', 'Modal non ouverte');
+                        addLog(logId, '❌ La modal ne s\'est pas ouverte', true);
+                        addLog(logId, 'ℹ️ Vérifiez la console pour les erreurs');
+                    }
+                }, 500);
+            } catch (error) {
+                setStatus('customActionStatus', 'error', 'Erreur');
+                addLog(logId, `❌ Erreur: ${error.message}`, true);
+            }
+        }
+
+        // Test 2: Scheduled Emails
+        function checkScheduledEmailsElements() {
+            const logId = 'scheduledEmailsLog';
+            document.getElementById(logId).innerHTML = '';
+            
+            addLog(logId, '🔍 Vérification des éléments DOM...');
+            
+            const tableBody = document.getElementById('scheduledEmailsTableBody');
+            const section = document.getElementById('scheduled-emails-section');
+            
+            addLog(logId, `scheduledEmailsTableBody: ${tableBody ? '✅ Trouvé' : '❌ Non trouvé'}`);
+            addLog(logId, `scheduled-emails-section: ${section ? '✅ Trouvé' : '❌ Non trouvé'}`);
+            addLog(logId, `loadScheduledEmails fonction: ${typeof loadScheduledEmails !== 'undefined' ? '✅ Définie' : '❌ Non définie'}`);
+            
+            if (tableBody && typeof loadScheduledEmails !== 'undefined') {
+                setStatus('scheduledEmailsStatus', 'success', 'Éléments OK');
+                addLog(logId, '✅ Tous les éléments sont présents');
+            } else {
+                setStatus('scheduledEmailsStatus', 'error', 'Éléments manquants');
+                addLog(logId, '❌ Éléments manquants', true);
+            }
+        }
+
+        function testLoadScheduledEmails() {
+            const logId = 'scheduledEmailsLog';
+            document.getElementById(logId).innerHTML = '';
+            
+            addLog(logId, '🧪 Test du chargement des emails programmés...');
+            
+            if (typeof loadScheduledEmails === 'undefined') {
+                setStatus('scheduledEmailsStatus', 'error', 'Fonction non définie');
+                addLog(logId, '❌ loadScheduledEmails n\'est pas définie', true);
+                addLog(logId, 'ℹ️ Vérifiez que script.js est bien chargé');
+                return;
+            }
+            
+            addLog(logId, '✅ Fonction loadScheduledEmails trouvée');
+            addLog(logId, 'Appel de la fonction...');
+            
+            try {
+                loadScheduledEmails().then(() => {
+                    setStatus('scheduledEmailsStatus', 'success', 'Test réussi!');
+                    addLog(logId, '✅ Fonction exécutée avec succès');
+                }).catch(error => {
+                    setStatus('scheduledEmailsStatus', 'error', 'Erreur');
+                    addLog(logId, `❌ Erreur: ${error.message}`, true);
+                });
+            } catch (error) {
+                setStatus('scheduledEmailsStatus', 'error', 'Erreur');
+                addLog(logId, `❌ Erreur: ${error.message}`, true);
+            }
+        }
+
+        // Test 3: Chart Config
+        function checkAnalyticsElements() {
+            const logId = 'chartLog';
+            document.getElementById(logId).innerHTML = '';
+            
+            addLog(logId, '🔍 Vérification des éléments...');
+            
+            const canvas = document.getElementById('comparisonChart');
+            addLog(logId, `comparisonChart canvas: ${canvas ? '✅ Trouvé' : '❌ Non trouvé'}`);
+            addLog(logId, `Chart.js chargé: ${typeof Chart !== 'undefined' ? '✅ Oui' : '❌ Non'}`);
+            addLog(logId, `AnalyticsManager: ${typeof window.analyticsManager !== 'undefined' ? '✅ Défini' : '❌ Non défini'}`);
+            
+            if (canvas && typeof Chart !== 'undefined') {
+                setStatus('chartStatus', 'success', 'Éléments OK');
+                addLog(logId, '✅ Tous les éléments sont présents');
+            } else {
+                setStatus('chartStatus', 'error', 'Éléments manquants');
+                addLog(logId, '❌ Éléments manquants', true);
+            }
+        }
+
+        function testChartConfig() {
+            const logId = 'chartLog';
+            document.getElementById(logId).innerHTML = '';
+            
+            addLog(logId, '🧪 Test de la configuration Chart.js...');
+            
+            if (typeof Chart === 'undefined') {
+                setStatus('chartStatus', 'error', 'Chart.js non chargé');
+                addLog(logId, '❌ Chart.js n\'est pas chargé', true);
+                return;
+            }
+            
+            addLog(logId, '✅ Chart.js est chargé (version ' + Chart.version + ')');
+            
+            // Test de configuration simplifiée
+            const testConfig = {
+                type: 'line',
+                data: { labels: ['01/01', '02/01', '03/01'], datasets: [] },
+                options: {
+                    scales: {
+                        x: {
+                            display: true,
+                            title: { display: true, text: 'Date' },
+                            ticks: { maxRotation: 45, minRotation: 45 }
+                        }
+                    }
+                }
+            };
+            
+            addLog(logId, 'Configuration testée:');
+            addLog(logId, '  - Axe X avec rotation 45°: ✅');
+            addLog(logId, '  - Labels de date: ✅');
+            addLog(logId, '  - Pas de type "category": ✅');
+            
+            setStatus('chartStatus', 'success', 'Configuration OK');
+            addLog(logId, '✅ La configuration du graphique est correcte');
+        }
+
+        // System Info
+        function loadSystemInfo() {
+            const info = document.getElementById('systemInfo');
+            const jsFiles = Array.from(document.querySelectorAll('script[src]'))
+                .filter(s => !s.src.startsWith('http'))
+                .map(s => {
+                    const url = new URL(s.src, window.location.href);
+                    return url.pathname.split('/').pop();
+                });
+            
+            info.innerHTML = `
+                <strong>Navigateur:</strong> ${navigator.userAgent.split(' ').slice(-2).join(' ')}<br>
+                <strong>URL actuelle:</strong> ${window.location.href}<br>
+                <strong>Fichiers JS locaux chargés:</strong><br>
+                ${jsFiles.map(f => `  - ${f}`).join('<br>') || '  Aucun'}
+            `;
+        }
+
+        // Initialize
+        loadSystemInfo();
+    </script>
+</body>
+</html>

@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Centre de Diagnostic CRM</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+        .container {
+            max-width: 1000px;
+            width: 100%;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #006EFF 0%, #0052cc 100%);
+            color: white;
+            padding: 3rem 2rem;
+            text-align: center;
+        }
+        .header h1 { font-size: 2.5rem; margin-bottom: 0.5rem; }
+        .header p { opacity: 0.9; font-size: 1.2rem; }
+        .content { padding: 3rem; }
+        .alert {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+        .alert h2 { color: #856404; margin-bottom: 0.5rem; }
+        .alert p { color: #856404; line-height: 1.6; }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .card {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 2rem;
+            text-align: center;
+            transition: all 0.3s;
+            border: 2px solid transparent;
+            cursor: pointer;
+            text-decoration: none;
+            display: block;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+            border-color: #006EFF;
+        }
+        .card.primary {
+            background: linear-gradient(135deg, #006EFF 0%, #0052cc 100%);
+            color: white;
+        }
+        .card.primary:hover { border-color: white; }
+        .card-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+        .card h3 {
+            font-size: 1.3rem;
+            margin-bottom: 0.5rem;
+        }
+        .card p {
+            opacity: 0.8;
+            line-height: 1.5;
+        }
+        .card.primary p { opacity: 0.95; }
+        .steps {
+            background: #e7f3ff;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-top: 2rem;
+        }
+        .steps h2 {
+            color: #006EFF;
+            margin-bottom: 1.5rem;
+            text-align: center;
+        }
+        .step {
+            display: flex;
+            align-items: start;
+            margin-bottom: 1.5rem;
+        }
+        .step-number {
+            background: #006EFF;
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin-right: 1rem;
+            flex-shrink: 0;
+        }
+        .step-content h3 {
+            color: #333;
+            margin-bottom: 0.5rem;
+        }
+        .step-content p {
+            color: #666;
+            line-height: 1.6;
+        }
+        .footer {
+            text-align: center;
+            padding: 2rem;
+            background: #f8f9fa;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔧 Centre de Diagnostic CRM</h1>
+            <p>Outils de vérification et de test des corrections</p>
+        </div>
+        
+        <div class="content">
+            <div class="alert">
+                <h2>⚠️ Problème de cache détecté</h2>
+                <p>Les modifications sont présentes dans les fichiers, mais votre navigateur utilise les anciennes versions en cache.<br>
+                <strong>Suivez les étapes ci-dessous pour résoudre ce problème.</strong></p>
+            </div>
+
+            <div class="grid">
+                <a href="verif-corrections.html" class="card primary">
+                    <div class="card-icon">🔍</div>
+                    <h3>1. Vérification</h3>
+                    <p>Vérifier que les corrections sont dans les fichiers</p>
+                </a>
+
+                <a href="clear-cache.html" class="card primary">
+                    <div class="card-icon">🔄</div>
+                    <h3>2. Nettoyage</h3>
+                    <p>Vider le cache et recharger le dashboard</p>
+                </a>
+
+                <a href="test-features.html" class="card">
+                    <div class="card-icon">🧪</div>
+                    <h3>Tests Interactifs</h3>
+                    <p>Tester chaque fonctionnalité individuellement</p>
+                </a>
+
+                <a href="dashboard.html" class="card">
+                    <div class="card-icon">📊</div>
+                    <h3>Dashboard</h3>
+                    <p>Accéder au dashboard CRM</p>
+                </a>
+
+                <a href="README-CORRECTIONS.md" class="card" target="_blank">
+                    <div class="card-icon">📖</div>
+                    <h3>Documentation</h3>
+                    <p>Guide complet des corrections</p>
+                </a>
+
+                <a href="LISEZ-MOI-IMPORTANT.md" class="card" target="_blank">
+                    <div class="card-icon">ℹ️</div>
+                    <h3>Aide</h3>
+                    <p>Résolution des problèmes</p>
+                </a>
+            </div>
+
+            <div class="steps">
+                <h2>📋 Procédure de test en 3 étapes</h2>
+                
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <h3>Vérification des fichiers</h3>
+                        <p>Cliquez sur "Vérification" ci-dessus. Si tous les ✅ sont verts, les corrections sont bien présentes dans <code>script.js</code> et <code>analytics.js</code>.</p>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <h3>Nettoyage du cache</h3>
+                        <p>Cliquez sur "Nettoyage" ci-dessus. Attendez 2 secondes pour la redirection automatique vers le dashboard avec le cache vidé.</p>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <h3>Test des fonctionnalités</h3>
+                        <p>
+                            • Cliquez sur "Créer une action" en haut à droite<br>
+                            • Allez dans "Relances" et vérifiez la section "Emails programmés"<br>
+                            • Ouvrez "Analytics" et vérifiez le graphique de comparaison
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p><strong>💡 Astuce:</strong> Appuyez sur F12 pour voir les messages de débogage dans la console</p>
+        </div>
+    </div>
+</body>
+</html>

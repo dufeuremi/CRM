@@ -220,6 +220,7 @@ function switchToSection(sectionId) {
                 'disponibilites': 'Disponibilités',
                 'rappels': 'Relances',
                 'historique': 'Historique des appels',
+                'mails': 'Mails',
                 'prospects': 'Prospection',
                 'script': 'Script',
                 'presentation': 'Présentation'
@@ -281,11 +282,17 @@ function switchToSection(sectionId) {
             // Load rappels calendar if rappels section is shown
             if (sectionId === 'rappels') {
                 loadRappels();
+                loadScheduledEmails(); // Also load scheduled emails in rappels section
             }
             
             // Load historique if historique section is shown
             if (sectionId === 'historique') {
                 loadHistorique();
+            }
+            
+            // Load mails if mails section is shown
+            if (sectionId === 'mails') {
+                loadMails();
             }
             
             // Load analytics if analytics section is shown
@@ -373,6 +380,10 @@ async function ensureSupabaseAndReload() {
     } else if (initialSection === 'historique') {
         if (typeof loadHistorique === 'function') {
             loadHistorique();
+        }
+    } else if (initialSection === 'mails') {
+        if (typeof loadMails === 'function') {
+            loadMails();
         }
     }
 }
@@ -478,6 +489,73 @@ const API = {
         const messageEl = document.getElementById('supportMessage');
         const errorEl = document.getElementById('supportError');
         
+        // Setup custom action dropdown
+        const customActionBtn = document.getElementById('customActionBtn');
+        const customActionDropdown = document.getElementById('customActionDropdown');
+        
+        console.log('=== CUSTOM ACTION BUTTON SETUP ===');
+        console.log('customActionBtn found:', !!customActionBtn);
+        console.log('customActionDropdown found:', !!customActionDropdown);
+        
+        if (customActionBtn && customActionDropdown) {
+            // Toggle dropdown on button click
+            customActionBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                console.log('Custom action button clicked!');
+                
+                const isVisible = customActionDropdown.style.display === 'block';
+                
+                if (isVisible) {
+                    customActionDropdown.style.display = 'none';
+                } else {
+                    // Position dropdown below button
+                    const btnRect = customActionBtn.getBoundingClientRect();
+                    customActionDropdown.style.top = `${btnRect.bottom + 5}px`;
+                    customActionDropdown.style.left = `${btnRect.left}px`;
+                    customActionDropdown.style.display = 'block';
+                    
+                    // Reinitialize Lucide icons
+                    if (typeof lucide !== 'undefined') {
+                        lucide.createIcons();
+                    }
+                }
+            });
+            
+            // Handle dropdown action clicks
+            const actionButtons = customActionDropdown.querySelectorAll('.custom-action-item');
+            actionButtons.forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const action = btn.getAttribute('data-action');
+                    console.log('Action selected:', action);
+                    
+                    // Hide dropdown
+                    customActionDropdown.style.display = 'none';
+                    
+                    // Create custom agent task
+                    await createCustomAgentTask(action);
+                });
+            });
+            
+            // Close dropdown when clicking outside
+            document.addEventListener('click', (e) => {
+                if (!customActionBtn.contains(e.target) && !customActionDropdown.contains(e.target)) {
+                    customActionDropdown.style.display = 'none';
+                }
+            });
+        }
+        
+        // Setup clear cache button
+        const clearCacheBtn = document.getElementById('clearCacheBtn');
+        if (clearCacheBtn) {
+            clearCacheBtn.addEventListener('click', () => {
+                console.log('Clear cache button clicked!');
+                if (confirm('Voulez-vous vraiment vider le cache et recharger la page ?')) {
+                    clearCacheAndReload();
+                }
+            });
+        }
+        
         if (!supportBtn || !supportModal) return;
         
         const showSupportModal = () => {
@@ -539,6 +617,18 @@ const API = {
         if (closeBtn) closeBtn.addEventListener('click', hideSupportModal);
         if (cancelBtn) cancelBtn.addEventListener('click', hideSupportModal);
         if (sendBtn) sendBtn.addEventListener('click', sendSupportMessage);
+        
+        // Agent sidebar toggle
+        const suggestsBtn = document.getElementById('suggestsBtn');
+        const closeAgentSidebar = document.getElementById('closeAgentSidebar');
+        
+        if (suggestsBtn) {
+            suggestsBtn.addEventListener('click', toggleAgentSidebar);
+        }
+        
+        if (closeAgentSidebar) {
+            closeAgentSidebar.addEventListener('click', toggleAgentSidebar);
+        }
     };
     
     if (document.readyState === 'loading') {
@@ -1091,12 +1181,12 @@ async function loadDashboardData() {
             }
         }
 
-        // 3. Get booked appointments (status = "booked")
+        // 3. Get booked appointments (booked is not null)
         let { data: bookedCalls, error: bookedError } = await window.supabaseClient
             .from('crm_calls')
             .select('*')
             .eq('user_id', userId)
-            .eq('status', 'booked');
+            .not('booked', 'is', null);
         
         // If no results, try with string
         if (!bookedError && (!bookedCalls || bookedCalls.length === 0)) {
@@ -1104,7 +1194,7 @@ async function loadDashboardData() {
                 .from('crm_calls')
                 .select('*')
                 .eq('user_id', userId.toString())
-                .eq('status', 'booked');
+                .not('booked', 'is', null);
             
             if (!bookedErrorStr && bookedCallsStr) {
                 bookedCalls = bookedCallsStr;
@@ -1122,14 +1212,15 @@ async function loadDashboardData() {
             }
         }
 
-        // 4. Calculate conversion rate (booked / total contacts)
+        // 4. Calculate conversion rate (taux de RDV: booked not null / total calls)
         const bookedCount = bookedCalls?.length || 0;
-        const conversionRate = totalContactsCount > 0 ? ((bookedCount / totalContactsCount) * 100).toFixed(1) : 0;
+        const totalCalls = allCalls?.length || 0;
+        const conversionRate = totalCalls > 0 ? ((bookedCount / totalCalls) * 100).toFixed(1) : 0;
         const conversionRateEl = document.getElementById('conversionRate');
         if (conversionRateEl) {
             animateCount(conversionRateEl, parseFloat(conversionRate), 1100, '%');
         }
-        console.log('Conversion rate:', conversionRate + '%', '(booked:', bookedCount, '/ total contacts:', totalContactsCount, ')');
+        console.log('Taux de RDV:', conversionRate + '%', '(booked:', bookedCount, '/ total calls:', totalCalls, ')');
 
         // 5. Load revenue data for chart (pipeline_status = "converted")
         const { data: convertedProspects, error: convertedError } = await window.supabaseClient
@@ -1403,20 +1494,20 @@ async function initCallStatsChart() {
             if (!callsByDay[dayKey]) {
                 callsByDay[dayKey] = {
                     total: 0,
-                    answered: 0, // contacted, booked, voicemail
-                    meetings: 0  // booked only
+                    answered: 0, // deposit_type is 'recorded' or 'not_recorded' (responded)
+                    meetings: 0  // booked is not null
                 };
             }
             
             callsByDay[dayKey].total++;
             
-            // Count as answered if contacted, booked, or voicemail
-            if (call.status === 'contacted' || call.status === 'booked' || call.status === 'voicemail') {
+            // Count as answered if deposit_type is 'recorded' or 'not_recorded' (not 'not_responded')
+            if (call.deposit_type === 'recorded' || call.deposit_type === 'not_recorded') {
                 callsByDay[dayKey].answered++;
             }
             
-            // Count meetings
-            if (call.status === 'booked') {
+            // Count meetings (booked is not null)
+            if (call.booked !== null && call.booked !== undefined) {
                 callsByDay[dayKey].meetings++;
             }
         });
@@ -1728,6 +1819,308 @@ Supabase Client: ${typeof window.supabaseClient !== 'undefined' ? 'Disponible' :
 }
 
 // Utility functions for formatting
+
+// Global utility function to escape HTML
+function escapeHTML(value) {
+    if (value === null || value === undefined) return '';
+    return String(value).replace(/[&<>"']/g, (char) => {
+        const escapeMap = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        };
+        return escapeMap[char] || char;
+    });
+}
+
+// ================= SCHEDULED EMAILS MANAGEMENT =================
+
+// Load all scheduled emails from crm_mails_schedule
+async function loadScheduledEmails() {
+    const scheduledEmailsContainer = document.getElementById('scheduledEmailsContainer');
+    if (!scheduledEmailsContainer) return;
+
+    // Show loading state
+    scheduledEmailsContainer.innerHTML = `<div class="mails-loading"><div class="loading-spinner"></div></div>`;
+
+    if (!window.supabaseClient || !window.currentUserId) {
+        scheduledEmailsContainer.innerHTML = `<div class="mails-empty"><i data-lucide="alert-circle"></i><h4>Erreur de connexion</h4><p>Impossible de charger les emails programmés</p></div>`;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+        return;
+    }
+
+    // Load prospects for recipient info
+    await loadProspects();
+
+    try {
+        // Fetch scheduled emails (sender_id is equivalent to user_id)
+        // Try with filter first
+        let { data, error } = await window.supabaseClient
+            .from('crm_mails_schedule')
+            .select('*')
+            .eq('sender_id', window.currentUserId)
+            .order('date', { ascending: true });
+
+        // If RLS error occurs, try without filter and filter client-side
+        if (error && error.code === '42704') {
+            console.warn('RLS JWT claim error detected. Table crm_mails_schedule has RLS policies that need to be fixed.', error);
+            console.warn('Attempting to fetch without filter...');
+            
+            const result = await window.supabaseClient
+                .from('crm_mails_schedule')
+                .select('*')
+                .order('date', { ascending: true });
+            
+            if (result.error && result.error.code === '42704') {
+                // RLS is blocking even SELECT without filter - show error message
+                console.error('RLS blocking all access to crm_mails_schedule. Database configuration needed.');
+                scheduledEmailsContainer.innerHTML = `<div class="mails-empty"><i data-lucide="alert-circle"></i><h4>Configuration requise</h4><p>La table des emails programmés nécessite une configuration de sécurité. Contactez l'administrateur.</p></div>`;
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+                return;
+            }
+            
+            if (result.error) {
+                throw result.error;
+            }
+            
+            // Filter client-side
+            data = (result.data || []).filter(email => 
+                email.sender_id === window.currentUserId
+            );
+            error = null;
+        }
+
+        if (error) {
+            throw error;
+        }
+        
+        if (!data) {
+            console.error('No data returned from crm_mails_schedule');
+            scheduledEmailsContainer.innerHTML = `<div class="mails-empty"><i data-lucide="alert-circle"></i><h4>Erreur de chargement</h4><p>Aucune donnée retournée</p></div>`;
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+            return;
+        }
+
+        allScheduledEmails = data;
+
+        console.log('Scheduled emails loaded:', data.length, data);
+
+        if (data.length === 0) {
+            scheduledEmailsContainer.innerHTML = `<div class="mails-empty"><i data-lucide="inbox"></i><h4>Aucun email programmé</h4><p>Les emails programmés apparaîtront ici</p></div>`;
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+            return;
+        }
+
+        // Display emails as mail-cards
+        scheduledEmailsContainer.innerHTML = data.map(email => {
+        const prospect = allProspects.find(p => p.id === email.recipient_id);
+        const recipient = prospect ? `${capitalizeFirstLetter(prospect.first_name || '')} ${capitalizeFirstLetter(prospect.last_name || '')}` : email.recipient || 'Destinataire inconnu';
+        const recipientEmail = prospect ? prospect.email || '' : email.recipient || '';
+        
+        // Use 'date' field as send date
+        const sendDateObj = email.date ? new Date(email.date) : null;
+        const formattedDate = sendDateObj ? sendDateObj.toLocaleDateString('fr-FR', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        }) : '-';
+        
+        // Countdown badge
+        let countdownBadge = '';
+        if (sendDateObj) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const mailDay = new Date(sendDateObj);
+            mailDay.setHours(0, 0, 0, 0);
+            const diffTime = mailDay - today;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            if (diffDays > 0) {
+                countdownBadge = `<span class="rappels-days-indicator">➔ ${diffDays}j</span>`;
+            } else if (diffDays === 0) {
+                countdownBadge = `<span class="rappels-days-indicator">➔ Aujourd'hui</span>`;
+            }
+        }
+        
+        // Use html_body or fallback to empty string
+        const bodyText = email.html_body || '';
+        // Extract text from HTML
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = bodyText;
+        const textContent = tempDiv.textContent || tempDiv.innerText || '';
+        const truncatedContent = textContent.slice(0, 150) + (textContent.length > 150 ? '...' : '');
+        
+        return `
+            <div class="mail-card" data-email-id="${email.id}">
+                <div class="mail-header">
+                    <div class="mail-header-left">
+                        <div class="mail-category-badge set_email">
+                            <i data-lucide="calendar-clock"></i>
+                            <span>Programmé</span>
+                        </div>
+                        <div class="mail-recipient">${recipient}</div>
+                    </div>
+                    <div class="mail-header-right">
+                        <div class="mail-date" style="display: flex; align-items: center; gap: 0.5rem;">
+                            <span>${formattedDate}</span>
+                            ${countdownBadge}
+                        </div>
+                    </div>
+                </div>
+                <div class="mail-body-section">
+                    <div class="mail-content">
+                        <div class="mail-subject">${escapeHTML(email.object || 'Sans objet')}</div>
+                        <div class="mail-preview">${escapeHTML(truncatedContent)}</div>
+                        ${recipientEmail ? `<div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.5rem;">${recipientEmail}</div>` : ''}
+                    </div>
+                    <button class="btn btn-danger btn-delete-scheduled-email" data-email-id="${email.id}" style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; padding: 0.5rem 1rem;">
+                        <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
+                        <span>Supprimer</span>
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+
+    // Add event listeners for delete
+    document.querySelectorAll('.btn-delete-scheduled-email').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const emailId = btn.getAttribute('data-email-id');
+            confirmDeleteScheduledEmail(emailId);
+        });
+    });
+    
+    } catch (error) {
+        console.error('Error loading scheduled emails:', error);
+        console.error('Error details:', JSON.stringify(error, null, 2));
+        const errorMessage = error?.message || error?.error_description || error?.hint || (typeof error === 'string' ? error : 'Une erreur est survenue');
+        scheduledEmailsContainer.innerHTML = `<div class="mails-empty"><i data-lucide="alert-circle"></i><h4>Erreur de chargement</h4><p>${errorMessage.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p></div>`;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+}
+
+// Show modal to edit scheduled email
+async function showEditScheduledEmailModal(emailId) {
+    const email = allScheduledEmails.find(e => e.id == emailId);
+    if (!email) return;
+    await loadProspects();
+    
+    // Get current prospect or extract from recipient
+    const currentProspect = allProspects.find(p => p.id === email.recipient_id);
+    
+    // Extract text from html_body for editing
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = email.html_body || '';
+    const textContent = tempDiv.textContent || tempDiv.innerText || '';
+    
+    // Modal HTML
+    const modalHtml = `
+        <div class="modal-overlay" id="editScheduledEmailModal" data-email-id="${emailId}">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 class="modal-title">Éditer l'email programmé</h3>
+                    <button class="modal-close" id="closeEditScheduledEmailModal"><i data-lucide="x"></i></button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Objet</label>
+                        <input type="text" id="editScheduledEmailSubject" class="form-input" value="${escapeHTML(email.object || '')}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Contenu</label>
+                        <textarea id="editScheduledEmailContent" class="form-input" rows="5" required>${escapeHTML(textContent)}</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Date d'envoi</label>
+                        <input type="datetime-local" id="editScheduledEmailDate" class="form-input" value="${email.date ? new Date(email.date).toISOString().slice(0,16) : ''}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Prospect destinataire</label>
+                        <select id="editScheduledEmailProspect" class="form-input" required>
+                            ${allProspects.map(p => `<option value="${p.id}" ${p.id == email.recipient_id ? 'selected' : ''}>${capitalizeFirstLetter(p.first_name || '')} ${capitalizeFirstLetter(p.last_name || '')} (${p.email || ''})</option>`).join('')}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" id="cancelEditScheduledEmail">Annuler</button>
+                    <button class="btn btn-primary" id="saveEditScheduledEmail">Enregistrer</button>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    const modal = document.getElementById('editScheduledEmailModal');
+    document.getElementById('closeEditScheduledEmailModal').onclick = () => modal.remove();
+    document.getElementById('cancelEditScheduledEmail').onclick = () => modal.remove();
+    document.getElementById('saveEditScheduledEmail').onclick = async () => {
+        const subject = document.getElementById('editScheduledEmailSubject').value.trim();
+        const content = document.getElementById('editScheduledEmailContent').value.trim();
+        const sendDate = document.getElementById('editScheduledEmailDate').value;
+        const prospectId = parseInt(document.getElementById('editScheduledEmailProspect').value);
+        
+        if (!subject || !content || !sendDate || !prospectId) {
+            showToast('Tous les champs sont obligatoires', 'error');
+            return;
+        }
+        
+        // Get prospect info
+        const prospect = allProspects.find(p => p.id === prospectId);
+        if (!prospect) {
+            showToast('Prospect introuvable', 'error');
+            return;
+        }
+        
+        // Wrap content in HTML
+        const htmlBody = `<div style="font-family: Arial, sans-serif;">${content.replace(/\n/g, '<br>')}</div>`;
+        
+        // Update in Supabase using correct column names
+        const { error } = await window.supabaseClient
+            .from('crm_mails_schedule')
+            .update({ 
+                object: subject, 
+                html_body: htmlBody, 
+                date: sendDate, 
+                recipient_id: prospectId,
+                recipient: prospect.email
+            })
+            .eq('id', email.id);
+            
+        if (error) {
+            console.error('Update error:', error);
+            showToast("Erreur lors de la mise à jour", 'error');
+        } else {
+            showToast("Email programmé mis à jour", 'success');
+            modal.remove();
+            loadScheduledEmails();
+        }
+    };
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+// Confirm delete scheduled email
+function confirmDeleteScheduledEmail(emailId) {
+    customConfirm('Supprimer cet email programmé ? Cette action est irréversible.', 'Confirmation').then(async (result) => {
+        if (!result) return;
+        // Delete from Supabase
+        const { error } = await window.supabaseClient
+            .from('crm_mails_schedule')
+            .delete()
+            .eq('id', emailId);
+        if (error) {
+            showToast("Erreur lors de la suppression", 'error');
+        } else {
+            showToast("Email programmé supprimé", 'success');
+            loadScheduledEmails();
+        }
+    });
+}
+
 function capitalizeFirstLetter(str) {
     if (!str) return '';
     // Capitalize first letter of each word (for names like "jean-paul" or "marie claire")
@@ -3118,6 +3511,98 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
+// Set depot button loading state
+function setDepotButtonLoading(prospectId, isLoading) {
+    // Find all depot buttons for this prospect (in table and in details modal)
+    const depotButtons = document.querySelectorAll(`.btn-depot[data-prospect-id="${prospectId}"], .btn-depot-detail[data-prospect-id="${prospectId}"]`);
+    
+    depotButtons.forEach(btn => {
+        const iconElement = btn.querySelector('i');
+        if (!iconElement) return;
+        
+        if (isLoading) {
+            // Store original icon
+            btn.setAttribute('data-original-icon', iconElement.getAttribute('data-lucide'));
+            // Replace with loading spinner
+            iconElement.setAttribute('data-lucide', 'loader-2');
+            iconElement.classList.add('spinning');
+            btn.disabled = true;
+            btn.style.opacity = '1'; // Keep full opacity to show spinner clearly
+            btn.style.color = 'var(--primary-color)'; // Blue spinner for AI activity
+        } else {
+            // Restore original icon
+            const originalIcon = btn.getAttribute('data-original-icon') || 'upload';
+            iconElement.setAttribute('data-lucide', originalIcon);
+            iconElement.classList.remove('spinning');
+            btn.disabled = false;
+            btn.style.opacity = '1';
+            btn.style.color = ''; // Reset color
+            btn.removeAttribute('data-original-icon');
+        }
+        
+        // Reinitialize Lucide icons
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
+    });
+}
+
+// Set prospect row depositing animation
+function setProspectRowDepositing(prospectId, isDepositing) {
+    // Find the prospect row in the table
+    const prospectRows = document.querySelectorAll(`tr[data-prospect-id="${prospectId}"]`);
+    
+    prospectRows.forEach(row => {
+        if (isDepositing) {
+            row.classList.add('prospect-row-depositing');
+        } else {
+            row.classList.remove('prospect-row-depositing');
+        }
+    });
+}
+
+// Check if agent task exists for prospect
+async function waitForAgentTask(prospectId, maxWaitTime = 30000) {
+    const startTime = Date.now();
+    const checkInterval = 1000; // Check every second
+    
+    return new Promise((resolve) => {
+        const checkTask = async () => {
+            // Check if an agent task exists for this prospect
+            const { data: tasks, error } = await window.supabaseClient
+                .from('crm_agent_tasks')
+                .select('*')
+                .eq('prospect_id', prospectId)
+                .eq('human_checking', false)
+                .order('created_at', { ascending: false })
+                .limit(1);
+            
+            if (error) {
+                console.error('Error checking agent tasks:', error);
+                resolve(false);
+                return;
+            }
+            
+            if (tasks && tasks.length > 0) {
+                // Task found!
+                resolve(true);
+                return;
+            }
+            
+            // Check if we've exceeded max wait time
+            if (Date.now() - startTime >= maxWaitTime) {
+                resolve(false);
+                return;
+            }
+            
+            // Continue checking
+            setTimeout(checkTask, checkInterval);
+        };
+        
+        checkTask();
+    });
+}
+
 // Confirm depot
 async function confirmDepot() {
     const selectedStatus = document.querySelector('input[name="depotStatus"]:checked').value;
@@ -3279,7 +3764,7 @@ async function confirmDepot() {
     }
     
     try {
-        const response = await fetch('https://host.taskalys.app/webhook-test/depositAI', {
+        const response = await fetch('https://host.taskalys.app//webhook/depositAI', {
             method: 'POST',
             body: formData
         });
@@ -3292,14 +3777,50 @@ async function confirmDepot() {
         const result = await response.json();
         console.log('Depot sent successfully:', result);
     
-    // Hide modal
-    hideDepotModal();
+        // Set loading state on depot button FIRST (replaces icon with spinner)
+        setDepotButtonLoading(prospectId, true);
+        
+        // Start prospect row animation
+        setProspectRowDepositing(prospectId, true);
+        
+        // Add to pending depots map
+        pendingDepots.set(prospectId, Date.now());
+        console.log('Added prospect to pending depots:', prospectId);
+    
+        // Hide modal
+        hideDepotModal();
     
         // Show success message
-        showToast('Dépôt enregistré avec succès');
+        showToast('Dépôt envoyé à l\'IA - Analyse en cours...');
+        
+        // Wait for agent task to arrive (with timeout)
+        const taskArrived = await waitForAgentTask(prospectId, 30000);
+        
+        // If still pending (not already stopped by real-time), stop now
+        if (pendingDepots.has(prospectId)) {
+            setDepotButtonLoading(prospectId, false);
+            setProspectRowDepositing(prospectId, false);
+            pendingDepots.delete(prospectId);
+        }
+        
+        if (taskArrived) {
+            // Reload agent tasks to show the new suggestion
+            if (typeof loadAgentTasks === 'function') {
+                loadAgentTasks();
+            }
+            showToast('✨ Analyse terminée ! Suggestion de l\'agent disponible', 'success');
+        } else {
+            showToast('L\'analyse prend plus de temps que prévu', 'warning');
+        }
+        
     } catch (error) {
         console.error('Error sending depot:', error);
         alert('Erreur lors de l\'envoi du dépôt : ' + error.message);
+        
+        // Stop animations in case of error and remove from pending
+        setDepotButtonLoading(prospectId, false);
+        setProspectRowDepositing(prospectId, false);
+        pendingDepots.delete(prospectId);
     } finally {
         // Re-enable button
         if (confirmBtn) {
@@ -3430,12 +3951,6 @@ function showProspectDetails(prospectId) {
 
     // Fill note personnelle
     fillProspectNote(prospect);
-
-    // Fill summary (placeholder for now)
-    fillProspectSummary(prospect);
-
-    // Fill activities (placeholder for now)
-    fillProspectActivities(prospect);
 
     // Fill timeline (placeholder data for now)
     fillProspectTimeline(prospectId);
@@ -3700,155 +4215,16 @@ function fillProspectNote(prospect) {
 }
 
 // Fill prospect summary
+// Fill prospect summary - REMOVED
 function fillProspectSummary(prospect) {
-    const summary = document.getElementById('prospectSummary');
-    const resume = prospect.resume || '';
-    const prospectId = prospect.id;
-    
-    if (resume) {
-        summary.innerHTML = `<p class="editable-text" data-field="resume" data-prospect-id="${prospectId}" contenteditable="false">${resume}</p>`;
-    } else {
-        summary.innerHTML = `<p class="editable-text prospect-summary-placeholder" data-field="resume" data-prospect-id="${prospectId}" contenteditable="false">Aucun résumé disponible pour le moment.</p>`;
-    }
-    
-    // Add edit functionality to summary
-    const editableText = summary.querySelector('.editable-text');
-    if (editableText) {
-        let originalValue = editableText.textContent.trim();
-        
-        editableText.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (!editableText.isContentEditable) {
-                originalValue = editableText.textContent.trim();
-                editableText.contentEditable = 'true';
-                editableText.classList.add('editing');
-                editableText.focus();
-                
-                // Remove placeholder class
-                editableText.classList.remove('prospect-summary-placeholder');
-            }
-        });
-        
-        editableText.addEventListener('blur', async () => {
-            if (editableText.isContentEditable) {
-                editableText.contentEditable = 'false';
-                editableText.classList.remove('editing');
-                
-                const newValue = editableText.textContent.trim();
-                
-                // If value changed, update in Supabase
-                if (newValue !== originalValue && newValue !== 'Aucun résumé disponible pour le moment.') {
-                    const fieldName = editableText.getAttribute('data-field');
-                    const prospectId = editableText.getAttribute('data-prospect-id');
-                    
-                    // Update in Supabase
-                    await updateProspectField(prospectId, fieldName, newValue);
-                    
-                    // Update local data
-                    const prospect = allProspects.find(p => p.id == prospectId);
-                    if (prospect) {
-                        prospect[fieldName] = newValue;
-                    }
-                    
-                    // Add placeholder class if empty
-                    if (!newValue) {
-                        editableText.textContent = 'Aucun résumé disponible pour le moment.';
-                        editableText.classList.add('prospect-summary-placeholder');
-                    }
-                } else if (!newValue || newValue === 'Aucun résumé disponible pour le moment.') {
-                    editableText.textContent = 'Aucun résumé disponible pour le moment.';
-                    editableText.classList.add('prospect-summary-placeholder');
-                } else {
-                    editableText.textContent = originalValue;
-                }
-            }
-        });
-        
-        editableText.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && editableText.isContentEditable) {
-                e.preventDefault();
-                editableText.textContent = originalValue;
-                if (!originalValue || originalValue === 'Aucun résumé disponible pour le moment.') {
-                    editableText.classList.add('prospect-summary-placeholder');
-                }
-                editableText.contentEditable = 'false';
-                editableText.classList.remove('editing');
-            }
-        });
-    }
+    // Section removed as per user request
+    return;
 }
 
-// Fill prospect activities
+// Fill prospect activities - REMOVED
 function fillProspectActivities(prospect) {
-    const activities = document.getElementById('prospectActivities');
-    const prospectId = prospect.id;
-    const activitiesText = prospect.activities || '';
-    
-    if (activitiesText) {
-        activities.innerHTML = `<p class="editable-text" data-field="activities" data-prospect-id="${prospectId}" contenteditable="false">${activitiesText}</p>`;
-    } else {
-        activities.innerHTML = `<p class="editable-text prospect-activities-placeholder" data-field="activities" data-prospect-id="${prospectId}" contenteditable="false">Aucune activité renseignée pour le moment.</p>`;
-    }
-    
-    // Add edit functionality to activities
-    const editableText = activities.querySelector('.editable-text');
-    if (editableText) {
-        let originalValue = editableText.textContent.trim();
-        
-        editableText.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (!editableText.isContentEditable) {
-                originalValue = editableText.textContent.trim();
-                editableText.contentEditable = 'true';
-                editableText.classList.add('editing');
-                editableText.focus();
-                
-                // Remove placeholder class
-                editableText.classList.remove('prospect-activities-placeholder');
-            }
-        });
-        
-        editableText.addEventListener('blur', async () => {
-            if (editableText.isContentEditable) {
-                editableText.contentEditable = 'false';
-                editableText.classList.remove('editing');
-                
-                const newValue = editableText.textContent.trim();
-                
-                // If value changed, update in Supabase
-                if (newValue !== originalValue && newValue !== 'Aucune activité renseignée pour le moment.') {
-                    const fieldName = editableText.getAttribute('data-field');
-                    const prospectId = editableText.getAttribute('data-prospect-id');
-                    
-                    // Update in Supabase
-                    await updateProspectField(prospectId, fieldName, newValue);
-                    
-                    // Update local data
-                    const prospect = allProspects.find(p => p.id == prospectId);
-                    if (prospect) {
-                        prospect[fieldName] = newValue;
-                    }
-                } else if (!newValue || newValue === 'Aucune activité renseignée pour le moment.') {
-                    editableText.textContent = 'Aucune activité renseignée pour le moment.';
-                    editableText.classList.add('prospect-activities-placeholder');
-                } else {
-                    editableText.textContent = originalValue;
-                }
-            }
-        });
-        
-        editableText.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && editableText.isContentEditable) {
-                e.preventDefault();
-                editableText.textContent = originalValue;
-                if (!originalValue || originalValue === 'Aucune activité renseignée pour le moment.') {
-                    editableText.classList.add('prospect-activities-placeholder');
-                }
-                editableText.contentEditable = 'false';
-                editableText.classList.remove('editing');
-            }
-        });
-    }
+    // Section removed as per user request
+    return;
 }
 
 // Update prospect field in Supabase
@@ -4210,100 +4586,185 @@ async function showAddProspectModal() {
     }
 }
 
-// Load and populate firms in the dropdown
+// Load firms for autocomplete (no longer populates dropdown)
 async function loadAndPopulateFirms() {
-    const firmSelect = document.getElementById('prospectFirm');
-    if (!firmSelect) return;
-
-    // Load firms from database
+    // Just load firms from database - no dropdown population needed
     await loadFirms();
-    
-    // Clear existing options except default ones
-    firmSelect.innerHTML = '<option value="">Choisir une entreprise...</option><option value="new">➕ Nouvelle entreprise</option>';
-    
-    // Add firms to dropdown
-    allFirms.forEach(firm => {
-        const option = document.createElement('option');
-        option.value = firm.id;
-        option.textContent = firm.name;
-        option.setAttribute('data-created', firm.created_at);
-        firmSelect.appendChild(option);
-    });
 }
 
-// Initialize firm selector functionality  
+// Initialize firm input with autocomplete functionality  
 function initializeFirmSelector() {
-    const firmSelect = document.getElementById('prospectFirm');
-    const newFirmInput = document.getElementById('newFirmInput');
-    const newFirmName = document.getElementById('newFirmName');
-    const firmCreationInfo = document.getElementById('firmCreationInfo');
-    const firmCreationDate = document.getElementById('firmCreationDate');
+    const firmInput = document.getElementById('prospectFirm');
+    const firmDropdown = document.getElementById('firmAutocompleteDropdown');
+    const firmStatus = document.getElementById('firmStatus');
     
-    if (!firmSelect || !newFirmInput || !newFirmName) return;
+    if (!firmInput || !firmDropdown || !firmStatus) return;
     
-    // Handle firm selection change
-    firmSelect.addEventListener('change', (e) => {
-        const selectedValue = e.target.value;
+    let selectedFirmId = null;
+    let currentFirmName = '';
+    let autocompleteTimeout;
+    let activeItemIndex = -1;
+    
+    // Handle firm input changes with autocomplete
+    firmInput.addEventListener('input', (e) => {
+        clearTimeout(autocompleteTimeout);
+        const inputValue = e.target.value.trim();
+        currentFirmName = inputValue;
+        selectedFirmId = null;
+        activeItemIndex = -1;
         
-        if (selectedValue === 'new') {
-            // Show input for new firm
-            newFirmInput.style.display = 'block';
-            newFirmName.focus();
-            firmCreationInfo.style.display = 'none';
-        } else if (selectedValue) {
-            // Show creation date for existing firm
-            const selectedOption = firmSelect.querySelector(`option[value="${selectedValue}"]`);
-            if (selectedOption && selectedOption.getAttribute('data-created')) {
-                const createdAt = selectedOption.getAttribute('data-created');
-                firmCreationDate.textContent = formatFirmCreationDate(createdAt);
-                firmCreationInfo.style.display = 'block';
+        if (inputValue.length < 2) {
+            hideFirmDropdown();
+            hideFirmStatus();
+            return;
+        }
+        
+        autocompleteTimeout = setTimeout(() => {
+            showFirmAutocomplete(inputValue);
+            checkFirmStatus(inputValue);
+        }, 200);
+    });
+    
+    // Handle keyboard navigation
+    firmInput.addEventListener('keydown', (e) => {
+        const items = firmDropdown.querySelectorAll('.firm-autocomplete-item');
+        
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            activeItemIndex = Math.min(activeItemIndex + 1, items.length - 1);
+            updateActiveAutocompleteItem();
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            activeItemIndex = Math.max(activeItemIndex - 1, -1);
+            updateActiveAutocompleteItem();
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (activeItemIndex >= 0 && items[activeItemIndex]) {
+                selectFirmFromAutocomplete(items[activeItemIndex]);
             }
-            newFirmInput.style.display = 'none';
-        } else {
-            // Hide both
-            newFirmInput.style.display = 'none';
-            firmCreationInfo.style.display = 'none';
+        } else if (e.key === 'Escape') {
+            hideFirmDropdown();
         }
     });
     
-    // Handle new firm name input
-    newFirmName.addEventListener('blur', async () => {
-        const firmName = newFirmName.value.trim();
-        if (firmName) {
-            // Check if firm already exists
-            const existingFirm = allFirms.find(firm => 
-                firm.name.toLowerCase() === firmName.toLowerCase()
-            );
-            
-            if (existingFirm) {
-                // Select existing firm
-                firmSelect.value = existingFirm.id;
-                newFirmInput.style.display = 'none';
-                firmCreationDate.textContent = formatFirmCreationDate(existingFirm.created_at);
-                firmCreationInfo.style.display = 'block';
-            } else {
-                // Add new firm
-                const newFirm = await addFirm(firmName);
-                if (newFirm) {
-                    // Add option to select
-                    const option = document.createElement('option');
-                    option.value = newFirm.id;
-                    option.textContent = newFirm.name;
-                    option.setAttribute('data-created', newFirm.created_at);
-                    firmSelect.appendChild(option);
-                    
-                    // Select the new firm
-                    firmSelect.value = newFirm.id;
-                    newFirmInput.style.display = 'none';
-                    firmCreationDate.textContent = formatFirmCreationDate(newFirm.created_at);
-                    firmCreationInfo.style.display = 'block';
-                    
-                    showToast('Nouvelle entreprise ajoutée', 'success');
-                }
-            }
+    // Hide dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!firmInput.contains(e.target) && !firmDropdown.contains(e.target)) {
+            hideFirmDropdown();
         }
     });
+    
+    function showFirmAutocomplete(searchTerm) {
+        const normalizedSearch = normalizeFirmName(searchTerm);
+        const matchingFirms = allFirms.filter(firm => 
+            normalizeFirmName(firm.name).includes(normalizedSearch)
+        ).slice(0, 5); // Limit to 5 results
+        
+        if (matchingFirms.length === 0) {
+            hideFirmDropdown();
+            return;
+        }
+        
+        let html = '';
+        matchingFirms.forEach((firm, index) => {
+            const createdDate = formatFirmCreationDate(firm.created_at);
+            html += `
+                <div class="firm-autocomplete-item" data-firm-id="${firm.id}" data-firm-name="${firm.name}">
+                    <div class="firm-name">${firm.name}</div>
+                    <div class="firm-info">Créée le ${createdDate}</div>
+                </div>
+            `;
+        });
+        
+        firmDropdown.innerHTML = html;
+        firmDropdown.style.display = 'block';
+        
+        // Add click listeners to items
+        firmDropdown.querySelectorAll('.firm-autocomplete-item').forEach(item => {
+            item.addEventListener('click', () => selectFirmFromAutocomplete(item));
+        });
+    }
+    
+    function selectFirmFromAutocomplete(item) {
+        const firmId = item.getAttribute('data-firm-id');
+        const firmName = item.getAttribute('data-firm-name');
+        
+        firmInput.value = firmName;
+        selectedFirmId = firmId;
+        currentFirmName = firmName;
+        
+        hideFirmDropdown();
+        showFirmStatus('existing', `Entreprise existante sélectionnée`);
+    }
+    
+    function updateActiveAutocompleteItem() {
+        const items = firmDropdown.querySelectorAll('.firm-autocomplete-item');
+        items.forEach((item, index) => {
+            item.classList.toggle('active', index === activeItemIndex);
+        });
+    }
+    
+    function checkFirmStatus(inputValue) {
+        const normalizedInput = normalizeFirmName(inputValue);
+        const existingFirm = allFirms.find(firm => 
+            normalizeFirmName(firm.name) === normalizedInput
+        );
+        
+        if (existingFirm) {
+            selectedFirmId = existingFirm.id;
+            showFirmStatus('existing', 'Cette entreprise existe déjà');
+        } else {
+            selectedFirmId = 'new';
+            showFirmStatus('new', 'Nouvelle entreprise sera créée');
+        }
+    }
+    
+    function showFirmStatus(type, message) {
+        const iconName = type === 'existing' ? 'check-circle' : 'plus-circle';
+        const className = type === 'existing' ? 'existing' : 'new';
+        
+        firmStatus.className = `firm-status ${className}`;
+        firmStatus.innerHTML = `
+            <i data-lucide="${iconName}"></i>
+            <span><strong>${message}</strong></span>
+        `;
+        firmStatus.style.display = 'block';
+        
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
+    }
+    
+    function hideFirmStatus() {
+        firmStatus.style.display = 'none';
+    }
+    
+    function hideFirmDropdown() {
+        firmDropdown.style.display = 'none';
+        activeItemIndex = -1;
+    }
+    
+    // Store getter functions for use in form submission
+    firmInput.getSelectedFirmId = () => selectedFirmId;
+    firmInput.getCurrentFirmName = () => currentFirmName;
 }
+
+// Normalize firm name for comparison (handle case and spacing)
+function normalizeFirmName(name) {
+    return name
+        .toLowerCase()
+        .replace(/\s+/g, ' ')  // Replace multiple spaces with single space
+        .trim()
+        .replace(/[àáâãäå]/g, 'a')
+        .replace(/[èéêë]/g, 'e')
+        .replace(/[ìíîï]/g, 'i')
+        .replace(/[òóôõö]/g, 'o')
+        .replace(/[ùúûü]/g, 'u')
+        .replace(/[ç]/g, 'c')
+        .replace(/[ñ]/g, 'n');
+}
+
+// Function no longer needed - firm status is now handled in HTML
 
 // Hide add prospect modal
 function hideAddProspectModal() {
@@ -4352,33 +4813,43 @@ async function submitAddProspect() {
     const lastName = document.getElementById('prospectLastName').value.trim();
     const email = document.getElementById('prospectEmail').value.trim();
     const phone = document.getElementById('prospectPhone').value.trim();
-    const firmSelect = document.getElementById('prospectFirm');
-    const firmId = firmSelect?.value || null;
+    const firmInput = document.getElementById('prospectFirm');
     const role = document.getElementById('prospectRole').value.trim();
     const linkedin = document.getElementById('prospectLinkedin')?.value.trim() || '';
     
-    // Handle new firm creation if needed
+    // Get firm information from the new input system
+    const firmId = firmInput?.getSelectedFirmId ? firmInput.getSelectedFirmId() : null;
+    const firmName = firmInput?.getCurrentFirmName ? firmInput.getCurrentFirmName() : '';
+    
+    // Handle firm creation/selection
     let finalFirmId = firmId;
-    if (firmId === 'new') {
-        const newFirmName = document.getElementById('newFirmName');
-        if (newFirmName && newFirmName.value.trim()) {
-            const newFirm = await addFirm(newFirmName.value.trim());
+    if (firmId === 'new' && firmName) {
+        const normalizedInput = normalizeFirmName(firmName);
+        
+        // Final check for existing firm before creation
+        const existingFirm = allFirms.find(firm => 
+            normalizeFirmName(firm.name) === normalizedInput
+        );
+        
+        if (existingFirm) {
+            // Use existing firm instead of creating new one
+            finalFirmId = existingFirm.id;
+            showToast(`Entreprise existante "${existingFirm.name}" utilisée`, 'info');
+        } else {
+            // Create new firm
+            const newFirm = await addFirm(firmName);
             if (newFirm) {
                 finalFirmId = newFirm.id;
+                showToast(`Nouvelle entreprise "${firmName}" créée`, 'success');
             } else {
                 alert('Erreur lors de la création de l\'entreprise');
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = originalText;
                 return;
             }
-        } else {
-            alert('Veuillez saisir le nom de la nouvelle entreprise');
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = originalText;
-            return;
         }
-    } else if (!firmId) {
-        alert('Veuillez sélectionner une entreprise');
+    } else if (!firmId || !firmName) {
+        alert('Veuillez saisir le nom de l\'entreprise');
         submitBtn.disabled = false;
         submitBtn.innerHTML = originalText;
         return;
@@ -4844,7 +5315,7 @@ async function loadICSFile() {
             const mappedEvent = {
                 start: startDate,
                 end: endDate,
-                summary: event.subject || 'Sans titre',
+                summary: event.subject || 'Evenement personnalisé',
                 subject: event.subject,
                 organizer: event.organizer?.emailAddress?.name || '',
                 webLink: event.webLink
@@ -4918,7 +5389,50 @@ function getEventsForDate(date) {
         }));
     }
     
-    return matchingEvents;
+    // Merge events with less than 40 minutes gap
+    return mergeCloseEvents(matchingEvents);
+}
+
+// Merge events that have less than 40 minutes gap between them
+function mergeCloseEvents(events) {
+    if (events.length <= 1) return events;
+    
+    // Sort events by start time
+    const sortedEvents = [...events].sort((a, b) => {
+        return new Date(a.start).getTime() - new Date(b.start).getTime();
+    });
+    
+    const mergedEvents = [];
+    let currentMerged = { ...sortedEvents[0] };
+    
+    for (let i = 1; i < sortedEvents.length; i++) {
+        const event = sortedEvents[i];
+        const currentEnd = new Date(currentMerged.end);
+        const nextStart = new Date(event.start);
+        
+        // Calculate gap in minutes
+        const gapMinutes = (nextStart.getTime() - currentEnd.getTime()) / (1000 * 60);
+        
+        // If gap is less than 40 minutes, merge the events
+        if (gapMinutes < 40) {
+            // Extend the current merged event to include this event
+            const nextEnd = new Date(event.end);
+            if (nextEnd > currentEnd) {
+                currentMerged.end = event.end;
+            }
+            // Keep the summary that indicates it's a merged block
+            currentMerged.summary = 'Indisponible';
+        } else {
+            // Gap is >= 40 minutes, save current merged event and start a new one
+            mergedEvents.push(currentMerged);
+            currentMerged = { ...event };
+        }
+    }
+    
+    // Don't forget to add the last merged event
+    mergedEvents.push(currentMerged);
+    
+    return mergedEvents;
 }
 
 // Format time range for display
@@ -5101,7 +5615,7 @@ function renderDayView() {
                 const height = duration * pixelsPerHour;
                 
                 const eventBar = document.createElement('div');
-                eventBar.className = 'timeline-event-bar';
+                eventBar.className = 'timeline-event-bar timeline-event-indispo';
                 eventBar.style.top = `${top}px`;
                 eventBar.style.height = `${height}px`;
                 
@@ -5155,77 +5669,122 @@ function renderDayView() {
 function renderWeekView() {
     const calendarViewEl = document.getElementById('calendarView');
     if (!calendarViewEl) return;
-    
+
     const weekStart = new Date(currentWeekStart);
     const weekContainer = document.createElement('div');
-    weekContainer.className = 'calendar-week';
-    
+    weekContainer.className = 'calendar-week timeline-week-view';
+
     const dayNames = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
+    // Timeline parameters
+    const startHour = 8;
+    const endHour = 22;
+    const pixelsPerHour = 60;
+
     for (let i = 0; i < 7; i++) {
         const day = new Date(weekStart);
         day.setDate(day.getDate() + i);
-        
+
         const dayEl = document.createElement('div');
-        dayEl.className = 'calendar-day';
-        
+        dayEl.className = 'calendar-day timeline-day-column';
+        if (i === 0) {
+            dayEl.classList.add('first-day');
+        }
+
         const dayDate = new Date(day);
         dayDate.setHours(0, 0, 0, 0);
         if (dayDate.getTime() === today.getTime()) {
             dayEl.classList.add('today');
         }
-        
+
+        // Header
         const dayHeader = document.createElement('div');
         dayHeader.className = 'calendar-day-header';
-        
         const dayName = document.createElement('div');
         dayName.className = 'day-name';
         dayName.textContent = dayNames[i];
-        
         const dayNumber = document.createElement('div');
         dayNumber.className = 'day-number';
         dayNumber.textContent = day.getDate();
-        
-        // Calculate days difference and add indicator
-        const diffTime = dayDate - today;
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        if (diffDays > 0) {
-            const daysIndicator = document.createElement('span');
-            daysIndicator.className = 'rappels-days-indicator';
-            daysIndicator.innerHTML = `➔ ${diffDays}j`;
-            dayHeader.appendChild(daysIndicator);
-        }
-        
         dayHeader.appendChild(dayName);
         dayHeader.appendChild(dayNumber);
-        
-        const eventsContainer = document.createElement('div');
-        eventsContainer.className = 'calendar-events';
-        
+        dayEl.appendChild(dayHeader);
+
+        // Timeline container for the day
+        const timelineContainer = document.createElement('div');
+        timelineContainer.className = 'timeline-container';
+
+        // Timeline grid (hour lines)
+        const timelineGrid = document.createElement('div');
+        timelineGrid.className = 'timeline-grid';
+        for (let hour = startHour; hour <= endHour; hour++) {
+            const hourLine = document.createElement('div');
+            hourLine.className = 'timeline-hour-line timeline-hour-line-main';
+            hourLine.style.top = `${(hour - startHour) * pixelsPerHour}px`;
+            timelineGrid.appendChild(hourLine);
+            if (hour < endHour) {
+                const halfHourLine = document.createElement('div');
+                halfHourLine.className = 'timeline-hour-line timeline-hour-line-half';
+                halfHourLine.style.top = `${(hour - startHour) * pixelsPerHour + pixelsPerHour / 2}px`;
+                timelineGrid.appendChild(halfHourLine);
+            }
+        }
+
+        // Hour labels (on the left only for the first day)
+        if (i === 0) {
+            const timeScale = document.createElement('div');
+            timeScale.className = 'time-scale';
+            for (let hour = startHour; hour <= endHour; hour++) {
+                const hourLabel = document.createElement('div');
+                hourLabel.className = 'timeline-hour-label';
+                hourLabel.style.top = `${(hour - startHour) * pixelsPerHour}px`;
+                hourLabel.textContent = `${String(hour).padStart(2, '0')}:00`;
+                timeScale.appendChild(hourLabel);
+            }
+            timelineContainer.appendChild(timeScale);
+        }
+
+        // Events layer
+        const eventsLayer = document.createElement('div');
+        eventsLayer.className = 'timeline-events-layer';
         const events = getEventsForDate(day);
         events.forEach(event => {
-            const eventEl = document.createElement('div');
-            eventEl.className = 'calendar-event calendar-event-indisponible';
-            
-            const eventTitle = document.createElement('div');
-            eventTitle.textContent = 'Indisponible';
-            
-            const eventTime = document.createElement('div');
-            eventTime.className = 'event-time';
-            eventTime.textContent = formatTimeRange(event);
-            
-            eventEl.appendChild(eventTitle);
-            eventEl.appendChild(eventTime);
-            eventsContainer.appendChild(eventEl);
+            if (!event.start || !event.end) return;
+            const startTime = new Date(event.start);
+            const endTime = new Date(event.end);
+            const startHourDecimal = startTime.getHours() + startTime.getMinutes() / 60;
+            const endHourDecimal = endTime.getHours() + endTime.getMinutes() / 60;
+            // Only show events within the visible range (8h-22h)
+            const visibleStart = Math.max(startHourDecimal, startHour);
+            const visibleEnd = Math.min(endHourDecimal, endHour);
+            const duration = visibleEnd - visibleStart;
+            if (duration > 0) {
+                const top = (visibleStart - startHour) * pixelsPerHour;
+                const height = duration * pixelsPerHour;
+                const eventBar = document.createElement('div');
+                eventBar.className = 'timeline-event-bar timeline-event-indispo';
+                eventBar.style.top = `${top}px`;
+                eventBar.style.height = `${height}px`;
+                const eventTitle = document.createElement('div');
+                eventTitle.className = 'timeline-event-title';
+                eventTitle.textContent = 'Indisponible';
+                const eventTime = document.createElement('div');
+                eventTime.className = 'timeline-event-time';
+                eventTime.textContent = formatTimeRange(event);
+                eventBar.appendChild(eventTitle);
+                eventBar.appendChild(eventTime);
+                eventsLayer.appendChild(eventBar);
+            }
         });
-        
-        dayEl.appendChild(dayHeader);
-        dayEl.appendChild(eventsContainer);
+
+        timelineContainer.appendChild(timelineGrid);
+        timelineContainer.appendChild(eventsLayer);
+        dayEl.appendChild(timelineContainer);
         weekContainer.appendChild(dayEl);
     }
-    
+
     calendarViewEl.appendChild(weekContainer);
 }
 
@@ -5915,7 +6474,7 @@ async function addRappelsEvent(eventData) {
     }
 
     try {
-        // Prepare payload with hours field, linked prospect, and validated status
+        // Prepare payload with hours field, linked prospect, validated status, and details
         const payload = {
             user_id: window.currentUserId,
             name: eventData.name,
@@ -5924,7 +6483,8 @@ async function addRappelsEvent(eventData) {
             type: eventData.type || 'autre',
             hours: eventData.hours || null,
             linked_prospect_id: eventData.linked_prospect_id || null,
-            validated: false
+            validated: false,
+            details: eventData.details || null
         };
         
         console.log('=== ADDING EVENT ===');
@@ -6119,10 +6679,14 @@ function renderRappelsSemaineView() {
                             // Format event name with underlined mentions
                             const formattedName = formatEventNameWithMentions(event.name, event.linked_prospect_id);
                             
+                            // AI badge if created by AI
+                            const aiBadge = event.ai ? '<span class="rappels-ai-badge" title="Créé par IA">AI</span>' : '';
+                            
                             return `
-                                <div class="calendar-event rappels-event-item ${typeClass} ${event.validated ? 'validated' : ''}" data-event-id="${event.id}">
+                                <div class="calendar-event rappels-event-item ${typeClass} ${event.validated ? 'validated' : ''}" data-event-id="${event.id}" style="cursor: pointer;">
                                     <div class="rappels-event-header">
                                         <span class="rappels-event-type-label">${typeLabel}</span>
+                                        ${aiBadge}
                                     </div>
                                     <div class="rappels-event-name">${formattedName}</div>
                                     <div class="rappels-event-footer">
@@ -6291,6 +6855,139 @@ function attachRappelsEventListeners() {
             }
         });
     });
+
+    // Click on event to view details
+    const eventItems = document.querySelectorAll('.rappels-event-item');
+    eventItems.forEach(item => {
+        item.addEventListener('click', (e) => {
+            // Don't trigger if clicking on buttons
+            if (e.target.closest('.rappels-event-validate') || e.target.closest('.rappels-event-delete')) {
+                return;
+            }
+            const eventId = parseInt(item.getAttribute('data-event-id'));
+            showRappelDetails(eventId);
+        });
+    });
+}
+
+// Show rappel details modal
+function showRappelDetails(eventId) {
+    const event = rappelsEvents.find(e => e.id === eventId);
+    if (!event) {
+        console.error('Event not found:', eventId);
+        return;
+    }
+
+    // Format date and time
+    const eventStart = parseLocalISOString(event.start);
+    const formattedDate = eventStart ? eventStart.toLocaleDateString('fr-FR', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    }) : 'Date non disponible';
+
+    // Type labels
+    const typeLabels = {
+        'rappel': 'Rappel',
+        'rdv': 'RDV',
+        'tache': 'Tâche',
+        'autre': 'Autre'
+    };
+    const typeLabel = typeLabels[event.type] || 'Autre';
+
+    // Get prospect info if linked
+    let prospectInfo = '';
+    if (event.linked_prospect_id && allProspects) {
+        const prospect = allProspects.find(p => p.id === event.linked_prospect_id);
+        if (prospect) {
+            const fullName = `${prospect.first_name || ''} ${prospect.last_name || ''}`.trim();
+            const firmName = prospect.crm_firmes?.name || '';
+            prospectInfo = `
+                <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--bg-light); border-radius: 8px;">
+                    <div style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Lié à :</div>
+                    <div style="font-weight: 600;">${fullName}</div>
+                    ${firmName ? `<div style="font-size: 0.875rem; color: var(--text-secondary);">${firmName}</div>` : ''}
+                </div>
+            `;
+        }
+    }
+
+    // Build modal HTML
+    const modalHTML = `
+        <div class="custom-alert-overlay" id="rappelDetailsModal" style="display: flex;">
+            <div class="custom-alert-content" style="max-width: 600px; width: 90%;">
+                <div class="custom-alert-header">
+                    <h3 style="margin: 0; color: var(--text-primary);">Détails de l'événement</h3>
+                    <button class="custom-alert-close" id="closeRappelDetails" style="background: none; border: none; cursor: pointer; padding: 0.5rem;">
+                        <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+                    </button>
+                </div>
+                <div class="custom-alert-body" style="padding: 1.5rem;">
+                    <div style="margin-bottom: 1rem;">
+                        <span style="display: inline-block; padding: 0.375rem 0.75rem; background: var(--primary-color); color: white; border-radius: 6px; font-size: 0.875rem; font-weight: 600; margin-bottom: 0.75rem;">
+                            ${typeLabel}
+                        </span>
+                        ${event.validated ? '<span style="display: inline-block; padding: 0.375rem 0.75rem; background: #22c55e; color: white; border-radius: 6px; font-size: 0.875rem; font-weight: 600; margin-left: 0.5rem;">✓ Fait</span>' : ''}
+                    </div>
+                    <h4 style="margin: 0 0 1rem 0; font-size: 1.25rem; color: var(--text-primary);">${event.name}</h4>
+                    <div style="margin-bottom: 1rem; color: var(--text-secondary);">
+                        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                            <i data-lucide="calendar" style="width: 16px; height: 16px;"></i>
+                            <span>${formattedDate}</span>
+                        </div>
+                        ${event.hours ? `
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <i data-lucide="clock" style="width: 16px; height: 16px;"></i>
+                                <span>${event.hours}</span>
+                            </div>
+                        ` : ''}
+                    </div>
+                    ${prospectInfo}
+                    ${event.details ? `
+                        <div>
+                            <div style="font-weight: 600; margin-bottom: 0.5rem; color: var(--text-primary);">Détails :</div>
+                            <div style="padding: 1rem; background: var(--bg-light); border-radius: 8px; white-space: pre-wrap; line-height: 1.6; color: var(--text-secondary);">${event.details}</div>
+                        </div>
+                    ` : '<div style="color: var(--text-secondary); font-style: italic;">Aucun détail supplémentaire</div>'}
+                </div>
+                <div class="custom-alert-footer" style="padding: 1rem 1.5rem; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 0.5rem;">
+                    <button class="btn btn-secondary" id="closeRappelDetailsBtn">Fermer</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Append to body
+    const existingModal = document.getElementById('rappelDetailsModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+
+    // Initialize Lucide icons in modal
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+
+    // Close handlers
+    const closeBtn = document.getElementById('closeRappelDetails');
+    const closeFooterBtn = document.getElementById('closeRappelDetailsBtn');
+    const modal = document.getElementById('rappelDetailsModal');
+
+    const closeModal = () => {
+        if (modal) {
+            modal.remove();
+        }
+    };
+
+    if (closeBtn) closeBtn.addEventListener('click', closeModal);
+    if (closeFooterBtn) closeFooterBtn.addEventListener('click', closeModal);
+    if (modal) {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeModal();
+        });
+    }
 }
 
 // Show mention dropdown with contacts and companies
@@ -6677,6 +7374,15 @@ async function loadRappels() {
     
     try {
         await renderRappelsCalendar();
+        // Charger également les emails programmés
+        console.log('=== LOADING SCHEDULED EMAILS IN RAPPELS ===');
+        if (typeof loadScheduledEmails === 'function') {
+            console.log('loadScheduledEmails function found, calling it...');
+            await loadScheduledEmails();
+            console.log('loadScheduledEmails completed');
+        } else {
+            console.warn('loadScheduledEmails function NOT found!');
+        }
     } catch (error) {
         console.error('Error loading rappels:', error);
     } finally {
@@ -6975,4 +7681,1782 @@ document.addEventListener('DOMContentLoaded', () => {
         rappelsTodayBtn.addEventListener('click', rappelsGoToToday);
     }
 });
+
+// ============================================
+// AGENT SIDEBAR FUNCTIONALITY
+// ============================================
+
+let agentSectionInitialized = false;
+let agentChannel = null;
+const agentNotificationSound = new Audio('assets/new_suggest.mp3');
+let lastSoundPlayTime = 0;
+let manualTaskCreation = false; // Flag to prevent sound on manual creation
+let pendingDepots = new Map(); // Track prospects waiting for agent response: prospectId -> timestamp
+
+// Initialize Agent Section (Real-time subscription)
+function initAgentSection() {
+    console.log('initAgentSection called');
+    if (agentSectionInitialized) {
+        console.log('Agent section already initialized');
+        return;
+    }
+    agentSectionInitialized = true;
+    
+    console.log('Initializing agent section with currentUserId:', currentUserId);
+    
+    // Load initial tasks
+    loadAgentTasks();
+    
+    // Start subscription immediately on page load
+    subscribeToAgentTasks();
+}
+
+// Load agent tasks
+async function loadAgentTasks() {
+    const agentLoading = document.getElementById('agentLoading');
+    const agentEventsList = document.getElementById('agentEventsList');
+    const agentEmpty = document.getElementById('agentEmpty');
+    
+    if (!agentLoading || !agentEventsList || !agentEmpty) return;
+    
+    try {
+        agentLoading.style.display = 'flex';
+        agentEventsList.style.display = 'none';
+        agentEmpty.style.display = 'none';
+        
+        console.log('Loading agent tasks for user_id:', currentUserId);
+        
+        // Load ALL tasks to debug (no filters)
+        const { data: allTasks, error: allError } = await supabase
+            .from('crm_agent_tasks')
+            .select('*')
+            .order('created_at', { ascending: false });
+        
+        console.log('ALL tasks in database:', allTasks);
+        
+        // Now load with filters - try without JOIN first
+        const { data: tasks, error } = await supabase
+            .from('crm_agent_tasks')
+            .select('*')
+            .eq('human_checking', false)
+            .order('created_at', { ascending: false });
+        
+        if (error) {
+            console.error('Error fetching tasks:', error);
+            throw error;
+        }
+        
+        console.log('Agent tasks loaded:', tasks);
+        console.log('Number of tasks:', tasks?.length || 0);
+        
+        // Load prospect info separately for each task
+        if (tasks && tasks.length > 0) {
+            for (let task of tasks) {
+                if (task.prospect_id) {
+                    const { data: prospect } = await supabase
+                        .from('prospects')
+                        .select('id, nom, prenom, entreprise')
+                        .eq('id', task.prospect_id)
+                        .single();
+                    task.prospects = prospect;
+                }
+            }
+            console.log('Tasks with prospects:', tasks);
+        }
+        
+        agentLoading.style.display = 'none';
+        
+        if (tasks && tasks.length > 0) {
+            renderAgentTasks(tasks);
+            agentEventsList.style.display = 'flex';
+        } else {
+            agentEmpty.style.display = 'flex';
+            // Update badge to 0 when no tasks
+            updateAgentNotificationBadge(0);
+        }
+        
+        // Reinitialize Lucide icons
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
+    } catch (error) {
+        console.error('Error loading agent tasks:', error);
+        agentLoading.style.display = 'none';
+        agentEmpty.style.display = 'flex';
+    }
+}
+
+// Format date in a human-friendly way (tomorrow, after tomorrow, day name)
+function formatFriendlyDate(dateString) {
+    if (!dateString) return 'Date non définie';
+    
+    const targetDate = new Date(dateString);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    
+    const afterTomorrow = new Date(today);
+    afterTomorrow.setDate(today.getDate() + 2);
+    
+    const targetDay = new Date(targetDate);
+    targetDay.setHours(0, 0, 0, 0);
+    
+    // Calcul de la différence en jours
+    const diffTime = targetDay - today;
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    
+    // Format time if available
+    const timeStr = dateString.includes('T') || dateString.includes(':') 
+        ? ` à ${targetDate.getHours().toString().padStart(2, '0')}h${targetDate.getMinutes().toString().padStart(2, '0')}`
+        : '';
+    
+    if (diffDays === 0) {
+        return `Aujourd'hui${timeStr}`;
+    } else if (diffDays === 1) {
+        return `Demain${timeStr}`;
+    } else if (diffDays === 2) {
+        return `Après-demain${timeStr}`;
+    } else if (diffDays > 2 && diffDays <= 7) {
+        const days = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+        return `${days[targetDate.getDay()].charAt(0).toUpperCase() + days[targetDate.getDay()].slice(1)} prochain${timeStr}`;
+    } else if (diffDays < 0) {
+        // Date passée
+        const absDays = Math.abs(diffDays);
+        if (absDays === 1) {
+            return `Hier${timeStr}`;
+        } else if (absDays <= 7) {
+            return `Il y a ${absDays} jours`;
+        } else {
+            return targetDate.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+        }
+    } else {
+        // Plus d'une semaine dans le futur
+        return targetDate.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: targetDate.getFullYear() !== today.getFullYear() ? 'numeric' : undefined });
+    }
+}
+
+// Get the event date from task content based on type
+function getEventDate(task) {
+    const content = task.content || {};
+    
+    switch(task.type) {
+        case 'set_email':
+            return content.send_date;
+        case 'set_remind':
+            // Combine date and time if both exist
+            if (content.remind_date) {
+                return content.remind_time 
+                    ? `${content.remind_date}T${content.remind_time}`
+                    : content.remind_date;
+            }
+            return null;
+        case 'send_visio':
+            return content.meeting_date;
+        default:
+            return null;
+    }
+}
+
+// Update agent notification badge
+function updateAgentNotificationBadge(count) {
+    const badge = document.getElementById('agentNotificationBadge');
+    if (!badge) return;
+    
+    if (count > 0) {
+        badge.textContent = count > 99 ? '99+' : count;
+        badge.style.display = 'flex';
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
+// Render agent tasks
+function renderAgentTasks(tasks) {
+    const agentEventsList = document.getElementById('agentEventsList');
+    if (!agentEventsList) return;
+    
+    // Update notification badge
+    updateAgentNotificationBadge(tasks.length);
+    
+    agentEventsList.innerHTML = tasks.map(task => {
+        const content = task.content || {};
+        const icon = getTaskIcon(task.type);
+        const actionText = getTaskActionText(task.type);
+        const formHtml = generateTaskForm(task);
+        
+        // Get event date from content, fallback to created_at
+        const eventDate = getEventDate(task);
+        const displayDate = eventDate 
+            ? formatFriendlyDate(eventDate)
+            : getTimeAgo(new Date(task.created_at));
+        
+        // Get prospect info
+        const prospect = task.prospects || {};
+        const prospectName = [prospect.prenom, prospect.nom].filter(Boolean).join(' ');
+        const prospectCompany = prospect.entreprise || '';
+        
+        // Only show prospect info if we have at least a name
+        const prospectHtml = prospectName ? `
+                        <p class="agent-event-prospect">
+                            <strong>${prospectName}</strong>
+                            ${prospectCompany ? `<span class="agent-event-company">${prospectCompany}</span>` : ''}
+                        </p>` : '';
+        
+        return `
+            <div class="agent-event-card" data-task-id="${task.id}">
+                <div class="agent-event-header">
+                    <div class="agent-event-icon ${task.type}">
+                        <i data-lucide="${icon}"></i>
+                    </div>
+                    <div class="agent-event-info">
+                        <h4 class="agent-event-title">${task.title || getTaskActionText(task.type)}</h4>
+                        <p class="agent-event-time">${displayDate}</p>
+                        ${prospectHtml}
+                    </div>
+                </div>
+                ${formHtml}
+                <div class="agent-event-actions">
+                    <button class="agent-event-btn agent-event-btn-delete" data-task-id="${task.id}" data-action="delete">
+                        <i data-lucide="trash-2"></i>
+                    </button>
+                    <button class="agent-event-btn agent-event-btn-confirm ${task.type}" data-task-id="${task.id}" data-action="confirm" data-type="${task.type}">
+                        <i data-lucide="${getActionIcon(task.type)}"></i>
+                        ${actionText}
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    // Add event listeners
+    document.querySelectorAll('.agent-event-btn').forEach(btn => {
+        btn.addEventListener('click', handleAgentEventAction);
+    });
+}
+
+// Generate task form based on type
+function generateTaskForm(task) {
+    const content = task.content || {};
+    
+    switch(task.type) {
+        case 'set_email':
+            return `
+                <div class="agent-event-form">
+                    <div class="agent-form-group">
+                        <label class="agent-form-label">Date et heure d'envoi</label>
+                        <div style="display: flex; gap: 0.75rem;">
+                            <input type="date" class="agent-form-input" data-field="scheduled_date" value="${content.scheduled_date ? content.scheduled_date.split('T')[0] : ''}" style="flex: 1;">
+                            <input type="time" class="agent-form-input" data-field="scheduled_time" value="${content.scheduled_time || ''}" style="flex: 1;" step="300">
+                        </div>
+                    </div>
+                    <div class="agent-form-group">
+                        <label class="agent-form-label">Destinataire</label>
+                        <input type="email" class="agent-form-input" data-field="recipient" value="${content.recipient || ''}" placeholder="email@example.com">
+                    </div>
+                    <div class="agent-form-group">
+                        <label class="agent-form-label">Objet</label>
+                        <input type="text" class="agent-form-input" data-field="subject" value="${content.subject || ''}" placeholder="Objet de l'email">
+                    </div>
+                    <div class="agent-form-group">
+                        <label class="agent-form-label">Contenu</label>
+                        <div class="agent-form-html-editor" contenteditable="true" data-field="content">${content.content || content.body || 'Contenu de l\'email...'}</div>
+                    </div>
+                </div>
+            `;
+            
+        case 'set_remind':
+            return `
+                <div class="agent-event-form">
+                    <div class="agent-form-group">
+                        <label class="agent-form-label">Date et heure du rappel</label>
+                        <div style="display: flex; gap: 0.75rem;">
+                            <input type="date" class="agent-form-input" data-field="remind_date" value="${content.remind_date ? content.remind_date.split('T')[0] : ''}" style="flex: 1;">
+                            <input type="time" class="agent-form-input" data-field="remind_time" value="${content.remind_time || ''}" style="flex: 1;" step="300">
+                        </div>
+                    </div>
+                    <div class="agent-form-group">
+                        <label class="agent-form-label">Message</label>
+                        <textarea class="agent-form-textarea" data-field="message" placeholder="Message du rappel">${content.message || ''}</textarea>
+                    </div>
+                </div>
+            `;
+            
+        case 'send_email':
+            return `
+                <div class="agent-event-form">
+                    <div class="agent-form-group">
+                        <label class="agent-form-label">Destinataire</label>
+                        <input type="email" class="agent-form-input" data-field="recipient" value="${content.recipient || ''}" placeholder="email@example.com">
+                    </div>
+                    <div class="agent-form-group">
+                        <label class="agent-form-label">Objet</label>
+                        <input type="text" class="agent-form-input" data-field="subject" value="${content.subject || ''}" placeholder="Objet de l'email">
+                    </div>
+                    <div class="agent-form-group">
+                        <label class="agent-form-label">Contenu</label>
+                        <div class="agent-form-html-editor" contenteditable="true" data-field="body">${content.body || content.content || 'Contenu de l\'email...'}</div>
+                    </div>
+                </div>
+            `;
+            
+        case 'send_visio':
+            return `
+                <div class="agent-event-form">
+                    <div class="agent-form-group">
+                        <label class="agent-form-label">Date et heure de la réunion</label>
+                        <div style="display: flex; gap: 0.75rem;">
+                            <input type="date" class="agent-form-input" data-field="meeting_date" value="${content.meeting_date ? content.meeting_date.split('T')[0] : ''}" style="flex: 1;">
+                            <input type="time" class="agent-form-input" data-field="meeting_time" value="${content.meeting_time || ''}" style="flex: 1;" step="300">
+                        </div>
+                    </div>
+                    <div class="agent-form-group">
+                        <label class="agent-form-label">Destinataires (séparés par des virgules)</label>
+                        <input type="text" class="agent-form-input" data-field="recipients" value="${content.recipients || ''}" placeholder="email1@example.com, email2@example.com">
+                    </div>
+                    <div class="agent-form-group">
+                        <label class="agent-form-label">Sujet de la réunion</label>
+                        <input type="text" class="agent-form-input" data-field="subject" value="${content.subject || ''}" placeholder="Sujet de la réunion">
+                    </div>
+                </div>
+            `;
+            
+        default:
+            return `
+                <div class="agent-event-form">
+                    <div class="agent-form-group">
+                        <label class="agent-form-label">Contenu</label>
+                        <textarea class="agent-form-textarea" data-field="content">${typeof content === 'string' ? content : JSON.stringify(content, null, 2)}</textarea>
+                    </div>
+                </div>
+            `;
+    }
+}
+
+// Get task icon based on type
+function getTaskIcon(type) {
+    const icons = {
+        'set_email': 'calendar-clock',
+        'set_remind': 'bell',
+        'send_email': 'mail',
+        'send_visio': 'video'
+    };
+    return icons[type] || 'bell';
+}
+
+// Get action icon
+function getActionIcon(type) {
+    switch(type) {
+        case 'set_email': return 'mail';
+        case 'send_email': return 'send';
+        case 'set_remind': return 'calendar';
+        case 'send_visio': return 'video';
+        default: return 'check';
+    }
+}
+
+// Get task action text based on type
+function getTaskActionText(type) {
+    const texts = {
+        'set_email': 'Planifier l\'email',
+        'set_remind': 'Planifier le rappel',
+        'send_email': 'Envoyer l\'email',
+        'send_visio': 'Invitation Teams'
+    };
+    return texts[type] || 'Confirmer';
+}
+
+// Handle agent event action
+async function handleAgentEventAction(e) {
+    const btn = e.currentTarget;
+    const taskId = btn.getAttribute('data-task-id');
+    const action = btn.getAttribute('data-action');
+    const taskType = btn.getAttribute('data-type');
+    
+    if (action === 'delete') {
+        const confirmed = await customConfirm('Êtes-vous sûr de vouloir supprimer cet événement ?', 'Supprimer l\'événement');
+        if (!confirmed) return;
+        
+        try {
+            const { error } = await supabase
+                .from('crm_agent_tasks')
+                .delete()
+                .eq('id', taskId);
+            
+            if (error) throw error;
+            
+            showToast('Événement supprimé', 'success');
+            loadAgentTasks();
+        } catch (error) {
+            console.error('Error deleting task:', error);
+            showToast('Erreur lors de la suppression', 'error');
+        }
+    } else if (action === 'confirm') {
+        // Get task card
+        const taskCard = document.querySelector(`.agent-event-card[data-task-id="${taskId}"]`);
+        if (!taskCard) return;
+        
+        // Get all form fields
+        const formFields = taskCard.querySelectorAll('[data-field]');
+        const editedContent = {};
+        
+        formFields.forEach(field => {
+            const fieldName = field.getAttribute('data-field');
+            // Check if it's a contenteditable element (HTML editor)
+            if (field.hasAttribute('contenteditable') && field.getAttribute('contenteditable') === 'true') {
+                editedContent[fieldName] = field.innerHTML;
+            } else {
+                editedContent[fieldName] = field.value;
+            }
+        });
+        
+        try {
+            // Get the full task data
+            const { data: task, error: fetchError } = await supabase
+                .from('crm_agent_tasks')
+                .select('*')
+                .eq('id', taskId)
+                .single();
+            
+            if (fetchError) throw fetchError;
+            
+            // Get prospect info if prospect_id exists
+            let prospectData = null;
+            if (task.prospect_id) {
+                const { data: prospect, error: prospectError } = await supabase
+                    .from('crm_prospects')
+                    .select('id, prenom, nom, entreprise, email, telephone, pipeline_status')
+                    .eq('id', task.prospect_id)
+                    .single();
+                
+                if (!prospectError && prospect) {
+                    prospectData = prospect;
+                }
+            }
+            
+            // Update human_checking and content
+            const { error: updateError } = await supabase
+                .from('crm_agent_tasks')
+                .update({ 
+                    human_checking: true,
+                    content: editedContent
+                })
+                .eq('id', taskId);
+            
+            if (updateError) throw updateError;
+            
+            // Prepare comprehensive webhook data
+            const webhookData = {
+                task_id: task.id,
+                task_type: task.type,
+                prospect_id: task.prospect_id,
+                user_id: task.user_id,
+                content: editedContent,
+                original_content: task.content,
+                human_checking: true,
+                confirmed_at: new Date().toISOString(),
+                created_at: task.created_at,
+                updated_at: new Date().toISOString(),
+                // User info
+                confirmed_by: window.currentUserFullName || 'Utilisateur inconnu',
+                confirmed_by_first_name: window.currentUserFirstName || '',
+                confirmed_by_last_name: window.currentUserLastName || '',
+                // Prospect info (if available)
+                prospect: prospectData
+            };
+            
+            // Send to webhook
+            await fetch('https://host.taskalys.app/webhook/confirm', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(webhookData)
+            }).catch(err => console.error('Webhook error:', err));
+            
+            showToast('Événement confirmé et envoyé', 'success');
+            loadAgentTasks();
+        } catch (error) {
+            console.error('Error confirming task:', error);
+            showToast('Erreur lors de la confirmation', 'error');
+        }
+    }
+}
+
+// Show skeleton for incoming task
+function showNewTaskSkeleton() {
+    const agentEventsList = document.getElementById('agentEventsList');
+    const agentEmpty = document.getElementById('agentEmpty');
+    const agentLoading = document.getElementById('agentLoading');
+    
+    if (!agentEventsList) return;
+    
+    // Hide loading spinner and empty state
+    if (agentLoading) agentLoading.style.display = 'none';
+    if (agentEmpty) agentEmpty.style.display = 'none';
+    
+    // Show events list
+    agentEventsList.style.display = 'flex';
+    
+    // Add skeleton at the top
+    const skeletonHtml = `
+        <div class="agent-skeleton-card agent-new-task-skeleton">
+            <div class="agent-skeleton-header">
+                <div class="agent-skeleton-icon"></div>
+                <div class="agent-skeleton-title"></div>
+            </div>
+            <div class="agent-skeleton-line"></div>
+            <div class="agent-skeleton-line short"></div>
+            <div class="agent-skeleton-button"></div>
+        </div>
+    `;
+    
+    // Prepend skeleton to the list
+    agentEventsList.insertAdjacentHTML('afterbegin', skeletonHtml);
+}
+
+// Subscribe to agent tasks (real-time)
+function subscribeToAgentTasks() {
+    console.log('subscribeToAgentTasks called');
+    if (agentChannel) {
+        console.log('Removing existing channel');
+        supabase.removeChannel(agentChannel);
+    }
+    
+    console.log('Creating new subscription channel');
+    agentChannel = supabase
+        .channel('agent-tasks-changes')
+        .on(
+            'postgres_changes',
+            {
+                event: '*',
+                schema: 'public',
+                table: 'crm_agent_tasks',
+                filter: `human_checking=eq.false`
+            },
+            (payload) => {
+                console.log('Agent task change detected:', payload);
+                console.log('Event type:', payload.eventType);
+                
+                // Handle new tasks
+                if (payload.eventType === 'INSERT' && payload.new && !payload.new.human_checking) {
+                    console.log('New task detected, processing...');
+                    
+                    // Check if this task is for a pending depot
+                    const taskProspectId = payload.new.prospect_id;
+                    if (taskProspectId && pendingDepots.has(taskProspectId)) {
+                        console.log('Task received for pending depot, stopping animations for prospect:', taskProspectId);
+                        
+                        // Stop loading animations immediately
+                        setDepotButtonLoading(taskProspectId, false);
+                        setProspectRowDepositing(taskProspectId, false);
+                        
+                        // Remove from pending depots
+                        pendingDepots.delete(taskProspectId);
+                        
+                        // Show success toast
+                        showToast('✨ Analyse terminée ! Suggestion disponible', 'success');
+                    }
+                    
+                    // Show skeleton for new task
+                    showNewTaskSkeleton();
+                    
+                    // Auto-open sidebar if closed
+                    const agentSidebar = document.getElementById('agentSidebar');
+                    if (agentSidebar && !agentSidebar.classList.contains('open')) {
+                        toggleAgentSidebar();
+                    }
+                    
+                    // Play sound only if NOT a manual creation and not played recently
+                    const now = Date.now();
+                    if (!manualTaskCreation && (now - lastSoundPlayTime > 2000)) {
+                        lastSoundPlayTime = now;
+                        console.log('Playing notification sound');
+                        setTimeout(() => {
+                            agentNotificationSound.play().catch(err => console.error('Error playing sound:', err));
+                        }, 300);
+                    } else {
+                        console.log('Sound skipped - manual creation or too soon after last play');
+                    }
+                }
+                
+                // Reload tasks (will replace skeleton with real task)
+                loadAgentTasks();
+            }
+        )
+        .subscribe();
+}
+
+// Get time ago string
+function getTimeAgo(date) {
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    
+    if (diffMins < 1) return 'À l\'instant';
+    if (diffMins < 60) return `Il y a ${diffMins}min`;
+    if (diffHours < 24) return `Il y a ${diffHours}h`;
+    return `Il y a ${diffDays}j`;
+}
+
+// Toggle agent sidebar
+function toggleAgentSidebar() {
+    const agentSidebar = document.getElementById('agentSidebar');
+    const appContainer = document.querySelector('.app-container');
+    
+    if (!agentSidebar || !appContainer) return;
+    
+    const isOpen = agentSidebar.classList.contains('open');
+    
+    if (isOpen) {
+        agentSidebar.classList.remove('open');
+        appContainer.classList.remove('agent-open');
+    } else {
+        agentSidebar.classList.add('open');
+        appContainer.classList.add('agent-open');
+    }
+}
+
+// Clear browser cache and reload page
+function clearCacheAndReload() {
+    console.log('=== CLEARING CACHE ===');
+    
+    // Clear localStorage
+    try {
+        localStorage.clear();
+        console.log('✓ localStorage cleared');
+    } catch (e) {
+        console.warn('Could not clear localStorage:', e);
+    }
+    
+    // Clear sessionStorage
+    try {
+        sessionStorage.clear();
+        console.log('✓ sessionStorage cleared');
+    } catch (e) {
+        console.warn('Could not clear sessionStorage:', e);
+    }
+    
+    // Clear Service Worker cache if available
+    if ('caches' in window) {
+        caches.keys().then(names => {
+            names.forEach(name => {
+                caches.delete(name);
+            });
+            console.log('✓ Service Worker caches cleared');
+        });
+    }
+    
+    // Show toast notification
+    if (typeof showToast === 'function') {
+        showToast('Cache vidé ! Rechargement...', 'success');
+    }
+    
+    // Force reload from server (bypass cache)
+    setTimeout(() => {
+        window.location.reload(true);
+    }, 500);
+}
+
+// Create custom agent task
+async function createCustomAgentTask(actionType) {
+    if (!window.supabaseClient || !window.currentUserId) {
+        console.error('Supabase client or user ID not available');
+        alert('Erreur: Impossible de créer la tâche');
+        return;
+    }
+    
+    // Define task templates based on action type
+    const templates = {
+        email: {
+            type: 'send_email',
+            title: 'Envoyer un email',
+            icon: 'mail',
+            content: {
+                recipient: '',
+                subject: '',
+                body: 'Rédigez votre email...'
+            }
+        },
+        rappel: {
+            type: 'set_remind',
+            title: 'Planifier un rappel',
+            icon: 'bell',
+            content: {
+                remind_date: new Date(Date.now() + 24*60*60*1000).toISOString().split('T')[0],
+                remind_time: '14:00',
+                message: ''
+            }
+        },
+        tache: {
+            type: 'set_email',
+            title: 'Programmer un email',
+            icon: 'calendar-clock',
+            content: {
+                recipient: '',
+                subject: '',
+                content: '',
+                scheduled_date: new Date(Date.now() + 24*60*60*1000).toISOString().split('T')[0],
+                scheduled_time: '09:00'
+            }
+        },
+        autre: {
+            type: 'send_visio',
+            title: 'Envoyer l\'invitation Teams',
+            icon: 'video',
+            content: {
+                meeting_date: new Date(Date.now() + 24*60*60*1000).toISOString().split('T')[0],
+                meeting_time: '14:00',
+                recipients: '',
+                subject: ''
+            }
+        }
+    };
+    
+    const template = templates[actionType];
+    if (!template) {
+        console.error('Unknown action type:', actionType);
+        return;
+    }
+    
+    try {
+        // Mark as manual creation to prevent sound
+        manualTaskCreation = true;
+        
+        // Insert into crm_agent_tasks
+        const { data, error } = await window.supabaseClient
+            .from('crm_agent_tasks')
+            .insert([{
+                user_id: window.currentUserId,
+                type: template.type,
+                content: template.content,
+                human_checking: false,
+                created_at: new Date().toISOString()
+            }])
+            .select();
+        
+        if (error) {
+            console.error('Error creating custom task:', error);
+            alert('Erreur lors de la création de la tâche');
+            manualTaskCreation = false;
+            return;
+        }
+        
+        console.log('Custom task created:', data);
+        
+        // Show agent sidebar and reload tasks
+        const agentSidebar = document.getElementById('agentSidebar');
+        if (agentSidebar && !agentSidebar.classList.contains('active')) {
+            agentSidebar.classList.add('active');
+        }
+        
+        // Wait a bit for real-time subscription to process
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Reload agent tasks to show new task
+        await loadAgentTasks();
+        
+        // Reinitialize Lucide icons after DOM update
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
+        
+        // Reset flag after processing
+        manualTaskCreation = false;
+        
+        showToast(`${template.title} ajouté à l'agent`, 'success');
+    } catch (error) {
+        console.error('Error in createCustomAgentTask:', error);
+        alert('Une erreur est survenue');
+        manualTaskCreation = false;
+    }
+}
+
+// Initialize agent section on page load
+document.addEventListener('DOMContentLoaded', () => {
+    // Wait for auth and supabase to be ready
+    const waitForSupabase = setInterval(() => {
+        if (window.supabaseClient && window.currentUserId) {
+            clearInterval(waitForSupabase);
+            initAgentSection();
+        }
+    }, 100);
+    
+    // Timeout after 5 seconds
+    setTimeout(() => {
+        clearInterval(waitForSupabase);
+        if (window.supabaseClient) {
+            initAgentSection();
+        }
+    }, 5000);
+    
+    // Agent sidebar toggle
+    const suggestsBtn = document.getElementById('suggestsBtn');
+    const closeAgentSidebar = document.getElementById('closeAgentSidebar');
+    
+    if (suggestsBtn) {
+        suggestsBtn.addEventListener('click', toggleAgentSidebar);
+    }
+    
+    if (closeAgentSidebar) {
+        closeAgentSidebar.addEventListener('click', toggleAgentSidebar);
+    }
+});
+
+// ===== MAILS SECTION =====
+
+let allMails = [];
+let filteredMails = [];
+
+// Load mails from database
+async function loadMails() {
+    const mailsLoading = document.getElementById('mailsLoading');
+    const mailsContainer = document.getElementById('mailsContainer');
+    
+    if (!mailsLoading || !mailsContainer) return;
+    
+    try {
+        mailsLoading.style.display = 'flex';
+        mailsContainer.innerHTML = '';
+        
+        if (!window.supabaseClient || !window.currentUserId) {
+            console.error('Supabase client or user ID not available');
+            mailsLoading.style.display = 'none';
+            displayMailsEmpty();
+            return;
+        }
+        
+        // Load emails from crm_mails table
+        // Get mails where user is either sender or recipient
+        const { data: mails, error } = await window.supabaseClient
+            .from('crm_mails')
+            .select('*')
+            .or(`sender_id.eq.${window.currentUserId},recipient_id.eq.${window.currentUserId}`)
+            .order('date', { ascending: false });
+        
+        if (error) {
+            console.error('Error loading mails:', error);
+            mailsLoading.style.display = 'none';
+            displayMailsEmpty();
+            return;
+        }
+        
+        // Transform data to match display format
+        allMails = (mails || []).map(mail => {
+            // Use type from database (send or received)
+            // If not present, determine based on sender_id
+            let mailType = mail.type;
+            if (!mailType || (mailType !== 'send' && mailType !== 'received')) {
+                mailType = mail.sender_id === window.currentUserId ? 'send' : 'received';
+            }
+
+            // Parse attachments if it's a string
+            let attachments = [];
+            if (mail.attachment) {
+                try {
+                    attachments = typeof mail.attachment === 'string' 
+                        ? JSON.parse(mail.attachment) 
+                        : mail.attachment;
+                    if (!Array.isArray(attachments)) {
+                        attachments = [attachments];
+                    }
+                } catch (e) {
+                    console.error('Error parsing attachments:', e);
+                    attachments = [];
+                }
+            }
+
+            // Add send_date if present (for scheduled emails)
+            return {
+                id: mail.id,
+                direction: mailType, // Use type directly as direction
+                from: mail.sender || 'Expéditeur inconnu',
+                to: mail.recipient || 'Destinataire inconnu',
+                subject: mail.object || 'Sans objet',
+                body: mail.html_body || '',
+                date: mail.date || mail.created_at,
+                send_date: mail.send_date || null,
+                attachments: attachments,
+                category: mail.category || null, // Add category field
+                type: mailType
+            };
+        });
+        
+        filteredMails = allMails;
+        
+        mailsLoading.style.display = 'none';
+        
+        if (allMails.length === 0) {
+            displayMailsEmpty();
+        } else {
+            displayMails(filteredMails);
+        }
+        
+        // Setup filter listeners
+        setupMailsFilters();
+        
+        // Setup real-time subscription
+        setupMailsRealtime();
+        
+        // Reinitialize Lucide icons
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
+    } catch (error) {
+        console.error('Error in loadMails:', error);
+        mailsLoading.style.display = 'none';
+        displayMailsEmpty();
+    }
+}
+
+// Setup real-time subscription for mails
+let mailsRealtimeChannel = null;
+
+function setupMailsRealtime() {
+    if (!window.supabaseClient || !window.currentUserId) return;
+    
+    // Unsubscribe from previous channel if exists
+    if (mailsRealtimeChannel) {
+        window.supabaseClient.removeChannel(mailsRealtimeChannel);
+    }
+    
+    // Subscribe to changes on crm_mails table
+    mailsRealtimeChannel = window.supabaseClient
+        .channel('crm_mails_changes')
+        .on(
+            'postgres_changes',
+            { 
+                event: '*', 
+                schema: 'public', 
+                table: 'crm_mails',
+                filter: `sender_id=eq.${window.currentUserId}`
+            },
+            (payload) => {
+                console.log('Mail change received (sent):', payload);
+                handleMailChange(payload);
+            }
+        )
+        .on(
+            'postgres_changes',
+            { 
+                event: '*', 
+                schema: 'public', 
+                table: 'crm_mails',
+                filter: `recipient_id=eq.${window.currentUserId}`
+            },
+            (payload) => {
+                console.log('Mail change received (received):', payload);
+                handleMailChange(payload);
+            }
+        )
+        .subscribe();
+}
+
+// Handle real-time mail changes
+function handleMailChange(payload) {
+    const { eventType, new: newRecord, old: oldRecord } = payload;
+    
+    if (eventType === 'INSERT' && newRecord) {
+        // Add new mail
+        // Use type from database (send or received)
+        let mailType = newRecord.type;
+        if (!mailType || (mailType !== 'send' && mailType !== 'received')) {
+            mailType = newRecord.sender_id === window.currentUserId ? 'send' : 'received';
+        }
+        
+        let attachments = [];
+        if (newRecord.attachment) {
+            try {
+                attachments = typeof newRecord.attachment === 'string' 
+                    ? JSON.parse(newRecord.attachment) 
+                    : newRecord.attachment;
+                if (!Array.isArray(attachments)) {
+                    attachments = [attachments];
+                }
+            } catch (e) {
+                attachments = [];
+            }
+        }
+        
+        const mail = {
+            id: newRecord.id,
+            direction: mailType,
+            from: newRecord.sender || 'Expéditeur inconnu',
+            to: newRecord.recipient || 'Destinataire inconnu',
+            subject: newRecord.object || 'Sans objet',
+            body: newRecord.html_body || '',
+            date: newRecord.date || newRecord.created_at,
+            attachments: attachments,
+            type: mailType
+        };
+        
+        // Add to beginning of array
+        allMails.unshift(mail);
+        
+        // Apply current filter
+        applyCurrentMailFilter();
+        
+    } else if (eventType === 'UPDATE' && newRecord) {
+        // Update existing mail
+        const index = allMails.findIndex(m => m.id === newRecord.id);
+        if (index !== -1) {
+            // Use type from database (send or received)
+            let mailType = newRecord.type;
+            if (!mailType || (mailType !== 'send' && mailType !== 'received')) {
+                mailType = newRecord.sender_id === window.currentUserId ? 'send' : 'received';
+            }
+            
+            let attachments = [];
+            if (newRecord.attachment) {
+                try {
+                    attachments = typeof newRecord.attachment === 'string' 
+                        ? JSON.parse(newRecord.attachment) 
+                        : newRecord.attachment;
+                    if (!Array.isArray(attachments)) {
+                        attachments = [attachments];
+                    }
+                } catch (e) {
+                    attachments = [];
+                }
+            }
+            
+            allMails[index] = {
+                id: newRecord.id,
+                direction: mailType,
+                from: newRecord.sender || 'Expéditeur inconnu',
+                to: newRecord.recipient || 'Destinataire inconnu',
+                subject: newRecord.object || 'Sans objet',
+                body: newRecord.html_body || '',
+                date: newRecord.date || newRecord.created_at,
+                attachments: attachments,
+                type: mailType
+            };
+            
+            applyCurrentMailFilter();
+        }
+        
+    } else if (eventType === 'DELETE' && oldRecord) {
+        // Remove deleted mail
+        allMails = allMails.filter(m => m.id !== oldRecord.id);
+        applyCurrentMailFilter();
+    }
+}
+
+// Apply current mail filter
+function applyCurrentMailFilter() {
+    const activeFilter = document.querySelector('#mails .prospect-filter-tag.active');
+    
+    if (!activeFilter) {
+        filteredMails = allMails;
+    } else if (activeFilter.id === 'mailsFilterSent') {
+        filteredMails = allMails.filter(m => m.direction === 'send');
+    } else if (activeFilter.id === 'mailsFilterReceived') {
+        filteredMails = allMails.filter(m => m.direction === 'received');
+    } else {
+        filteredMails = allMails;
+    }
+    
+    // Apply search if present
+    const searchInput = document.getElementById('mailsSearch');
+    if (searchInput && searchInput.value) {
+        const searchTerm = searchInput.value.toLowerCase();
+        filteredMails = filteredMails.filter(mail => {
+            return (mail.subject || '').toLowerCase().includes(searchTerm) ||
+                   (mail.body || '').toLowerCase().includes(searchTerm) ||
+                   (mail.to || '').toLowerCase().includes(searchTerm) ||
+                   (mail.from || '').toLowerCase().includes(searchTerm);
+        });
+    }
+    
+    if (filteredMails.length === 0) {
+        displayMailsEmpty();
+    } else {
+        displayMails(filteredMails);
+    }
+}
+
+// Display mails in container
+function displayMails(mails) {
+    const mailsContainer = document.getElementById('mailsContainer');
+    if (!mailsContainer) return;
+    
+    if (mails.length === 0) {
+        displayMailsEmpty();
+        return;
+    }
+    
+    mailsContainer.innerHTML = mails.map(mail => {
+        const direction = mail.direction || 'send';
+        const directionLabel = direction === 'send' ? 'Envoyé' : 'Reçu';
+        const directionIcon = direction === 'send' ? 'send' : 'inbox';
+
+        // Scheduled email: use send_date if category is set_email
+        let mailDateObj, formattedDate, countdownBadge = '';
+        if (mail.category === 'set_email' && mail.send_date) {
+            mailDateObj = new Date(mail.send_date);
+            formattedDate = mailDateObj.toLocaleDateString('fr-FR', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            // Countdown badge (like rappels)
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const mailDay = new Date(mailDateObj);
+            mailDay.setHours(0, 0, 0, 0);
+            const diffTime = mailDay - today;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            if (diffDays > 0) {
+                countdownBadge = `<span class="rappels-days-indicator">➔ ${diffDays}j</span>`;
+            }
+        } else {
+            mailDateObj = new Date(mail.date);
+            formattedDate = mailDateObj.toLocaleDateString('fr-FR', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        // Extract text preview from HTML body
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = mail.body || '';
+        const textPreview = tempDiv.textContent || tempDiv.innerText || '';
+        const truncatedPreview = textPreview.substring(0, 150) + (textPreview.length > 150 ? '...' : '');
+
+        // Get recipient/sender
+        const recipient = direction === 'send' ? mail.to : mail.from;
+
+        // Check for attachments
+        const hasAttachments = mail.attachments && mail.attachments.length > 0;
+        const attachmentBadge = hasAttachments
+            ? `<div class="mail-attachment-badge">
+                <i data-lucide="paperclip"></i>
+                <span>${mail.attachments.length}</span>
+            </div>`
+            : '';
+
+        // Category badge - only show for Teams invitations
+        let categoryBadge = '';
+        if (mail.category === 'send_visio') {
+            categoryBadge = `<div class="mail-category-badge ${mail.category}">
+                <i data-lucide="video"></i>
+                <span>Invitation Teams</span>
+            </div>`;
+        }
+
+        return `
+            <div class="mail-card" data-mail-id="${mail.id}">
+                <div class="mail-header">
+                    <div class="mail-header-left">
+                        <div class="mail-direction-badge ${direction}">
+                            <i data-lucide="${directionIcon}"></i>
+                            <span>${directionLabel}</span>
+                        </div>
+                        ${categoryBadge}
+                        <div class="mail-recipient">${recipient || 'Non spécifié'}</div>
+                    </div>
+                    <div class="mail-header-right">
+                        ${attachmentBadge}
+                        <div class="mail-date">${formattedDate} ${countdownBadge}</div>
+                    </div>
+                </div>
+                <div class="mail-body-section">
+                    <div class="mail-content">
+                        <div class="mail-subject">${mail.subject || 'Sans objet'}</div>
+                        <div class="mail-preview">${truncatedPreview}</div>
+                    </div>
+                    <button class="btn btn-secondary mail-transfer-btn" data-mail-id="${mail.id}">
+                        <i data-lucide="alert-circle" style="width: 18px; height: 18px;"></i>
+                        <span>Transférer au commercial</span>
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    // Add click listeners to expand mail cards
+    document.querySelectorAll('.mail-card').forEach(card => {
+        card.addEventListener('click', (e) => {
+            // Don't expand if clicking the transfer button
+            if (e.target.closest('.mail-transfer-btn')) {
+                return;
+            }
+            const mailId = parseInt(card.getAttribute('data-mail-id'));
+            toggleMailExpanded(mailId, card);
+        });
+    });
+    
+    // Add click listeners to transfer buttons
+    document.querySelectorAll('.mail-transfer-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation(); // Prevent card expansion
+            const mailId = parseInt(btn.getAttribute('data-mail-id'));
+            await transferMailToCommercial(mailId);
+        });
+    });
+    
+    // Reinitialize Lucide icons
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+}
+
+// Transfer mail to commercial via webhook
+async function transferMailToCommercial(mailId) {
+    const mail = allMails.find(m => m.id === mailId);
+    if (!mail) {
+        showCustomAlert('Erreur', 'Email introuvable.');
+        return;
+    }
+    
+    try {
+        // Prepare mail data
+        const mailData = {
+            id: mail.id,
+            subject: mail.subject,
+            body: mail.body,
+            from: mail.from,
+            to: mail.to,
+            date: mail.date,
+            direction: mail.direction,
+            category: mail.category,
+            attachments: mail.attachments || [],
+            user_id: mail.user_id,
+            created_at: mail.created_at,
+            transferred_by: window.currentUserFullName || 'Utilisateur inconnu',
+            transferred_by_first_name: window.currentUserFirstName || '',
+            transferred_by_last_name: window.currentUserLastName || ''
+        };
+        
+        // Show loading state
+        const btn = document.querySelector(`.mail-transfer-btn[data-mail-id="${mailId}"]`);
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i data-lucide="loader-2" style="width: 14px; height: 14px; animation: spin 1s linear infinite;"></i><span>Envoi...</span>';
+        lucide.createIcons();
+        
+        // Send to webhook
+        const response = await fetch('https://host.taskalys.app/webhook/transfert-email', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(mailData)
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Erreur HTTP: ${response.status}`);
+        }
+        
+        // Success
+        btn.innerHTML = '<i data-lucide="check" style="width: 14px; height: 14px;"></i><span>Transféré ✓</span>';
+        lucide.createIcons();
+        
+        showCustomAlert('Succès', 'L\'email a été transféré au commercial avec succès.');
+        
+        // Reset button after 3 seconds
+        setTimeout(() => {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+            lucide.createIcons();
+        }, 3000);
+        
+    } catch (error) {
+        console.error('Error transferring mail:', error);
+        showCustomAlert('Erreur', 'Une erreur est survenue lors du transfert de l\'email. Veuillez réessayer.');
+        
+        // Reset button
+        const btn = document.querySelector(`.mail-transfer-btn[data-mail-id="${mailId}"]`);
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i data-lucide="send" style="width: 14px; height: 14px;"></i><span>Transférer au commercial</span>';
+            lucide.createIcons();
+        }
+    }
+}
+
+// Toggle mail expanded state
+function toggleMailExpanded(mailId, cardElement) {
+    const mail = allMails.find(m => m.id === mailId);
+    if (!mail) return;
+    
+    const isExpanded = cardElement.classList.contains('expanded');
+    
+    if (isExpanded) {
+        // Collapse
+        cardElement.classList.remove('expanded');
+        const mailBody = cardElement.querySelector('.mail-body');
+        if (mailBody) mailBody.remove();
+    } else {
+        // Expand
+        cardElement.classList.add('expanded');
+        
+        // Create body content
+        const mailBodyHtml = `
+            <div class="mail-body">
+                <div class="mail-body-content">${mail.body || '<p>Pas de contenu</p>'}</div>
+                ${mail.attachments && mail.attachments.length > 0 ? `
+                    <div class="mail-attachments">
+                        <div class="mail-attachments-title">
+                            <i data-lucide="paperclip"></i>
+                            <span>Pièces jointes (${mail.attachments.length})</span>
+                        </div>
+                        <div class="mail-attachments-list">
+                            ${mail.attachments.map(att => `
+                                <div class="mail-attachment-item">
+                                    <div class="mail-attachment-icon">
+                                        <i data-lucide="file"></i>
+                                    </div>
+                                    <div class="mail-attachment-info">
+                                        <div class="mail-attachment-name">${att.name || 'Fichier'}</div>
+                                        <div class="mail-attachment-size">${formatFileSize(att.size || 0)}</div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                ` : ''}
+            </div>
+        `;
+        
+        cardElement.insertAdjacentHTML('beforeend', mailBodyHtml);
+        
+        // Reinitialize Lucide icons
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
+    }
+}
+
+// Format file size
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+}
+
+// Display empty state
+function displayMailsEmpty() {
+    const mailsContainer = document.getElementById('mailsContainer');
+    if (!mailsContainer) return;
+    
+    mailsContainer.innerHTML = `
+        <div class="mails-empty">
+            <i data-lucide="inbox"></i>
+            <h4>Aucun email</h4>
+            <p>Les emails envoyés et reçus apparaîtront ici</p>
+        </div>
+    `;
+    
+    // Reinitialize Lucide icons
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+}
+
+// Setup mails filters
+function setupMailsFilters() {
+    const filterAll = document.getElementById('mailsFilterAll');
+    const filterSent = document.getElementById('mailsFilterSent');
+    const filterReceived = document.getElementById('mailsFilterReceived');
+    const searchInput = document.getElementById('mailsSearch');
+    
+    if (filterAll) {
+        filterAll.addEventListener('click', () => {
+            setActiveMailFilter(filterAll);
+            filteredMails = allMails;
+            displayMails(filteredMails);
+        });
+    }
+    
+    if (filterSent) {
+        filterSent.addEventListener('click', () => {
+            setActiveMailFilter(filterSent);
+            filteredMails = allMails.filter(m => m.direction === 'sent');
+            displayMails(filteredMails);
+        });
+    }
+    
+    if (filterReceived) {
+        filterReceived.addEventListener('click', () => {
+            setActiveMailFilter(filterReceived);
+            filteredMails = allMails.filter(m => m.direction === 'received');
+            displayMails(filteredMails);
+        });
+    }
+    
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            filteredMails = allMails.filter(mail => {
+                return (mail.subject || '').toLowerCase().includes(searchTerm) ||
+                       (mail.body || '').toLowerCase().includes(searchTerm) ||
+                       (mail.to || '').toLowerCase().includes(searchTerm) ||
+                       (mail.from || '').toLowerCase().includes(searchTerm);
+            });
+            displayMails(filteredMails);
+        });
+    }
+}
+
+// Set active mail filter
+function setActiveMailFilter(activeButton) {
+    document.querySelectorAll('#mails .prospect-filter-tag').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    if (activeButton) {
+        activeButton.classList.add('active');
+    }
+}
+
+// ==================== Infos Utiles ====================
+
+// Generate and download invoice PDF
+document.addEventListener('DOMContentLoaded', () => {
+    const generateInvoiceBtn = document.getElementById('generateInvoiceBtn');
+    
+    // Restore saved form data
+    restoreInvoiceFormData();
+    
+    if (generateInvoiceBtn) {
+        generateInvoiceBtn.addEventListener('click', async () => {
+            try {
+                // Validate required fields
+                const siret = document.getElementById('invoiceSiret').value.trim();
+                const ape = document.getElementById('invoiceApe').value.trim();
+                const address = document.getElementById('invoiceAddress').value.trim();
+                const iban = document.getElementById('invoiceIban').value.trim();
+                
+                if (!siret || !ape || !address || !iban) {
+                    showToast('Veuillez remplir tous les champs obligatoires (*)', 'error');
+                    return;
+                }
+                
+                // Get user data
+                const userData = {
+                    firstName: window.currentUserFirstName || 'Prénom',
+                    lastName: window.currentUserLastName || 'Nom',
+                    email: window.currentUserEmail || 'email@example.com',
+                    siret: siret,
+                    ape: ape,
+                    tva: document.getElementById('invoiceTva').value.trim(),
+                    baseline: document.getElementById('invoiceBaseline').value.trim(),
+                    address: address,
+                    iban: iban,
+                    bic: document.getElementById('invoiceBic').value.trim(),
+                    phone: document.getElementById('invoicePhone').value.trim(),
+                    website: document.getElementById('invoiceWebsite').value.trim()
+                };
+                
+                // Save form data to localStorage for next time
+                saveInvoiceFormData(userData);
+                
+                // Generate HTML then PDF
+                await generateInvoicePDF(userData);
+                
+                showToast('Facture générée avec succès', 'success');
+            } catch (error) {
+                console.error('Error generating invoice:', error);
+                showToast('Erreur lors de la génération de la facture', 'error');
+            }
+        });
+    }
+});
+
+// Generate invoice HTML based on professional template
+function generateInvoiceHTML(userData) {
+    const today = new Date();
+    const invoiceNumber = `${userData.lastName.toUpperCase()}-${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const invoiceDate = today.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+    const dueDate = new Date(today.getTime() + (30 * 24 * 60 * 60 * 1000)).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+    
+    return `<!DOCTYPE html>
+<html lang="fr" itemscope itemtype="https://schema.org/Invoice">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Facture ${invoiceNumber}</title>
+  <style>
+    :root{
+      --brand:#006EFF;         /* couleur primaire du site */
+      --accent:#0ea5e9;        /* bleu clair */
+      --muted:#1D2B3D;         /* text-secondary du site */
+      --border:#E5E7EB;        /* border-color du site */
+      --bg:#FFFFFF;            /* fond */
+      --font: 'Sora', system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, "Helvetica Neue", sans-serif;
+    }
+    *{box-sizing:border-box;}
+    html,body{margin:0;padding:0;background:var(--bg);color:#19273A;font-family:var(--font);}
+    .container{max-width:900px;margin:32px auto;padding:28px;border:1px solid var(--border);border-radius:15px;}
+    header{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;border-bottom:2px solid var(--border);padding-bottom:16px;margin-bottom:16px;}
+    .brand{display:flex;flex-direction:column;gap:8px}
+    .brand .name{font-size:22px;font-weight:700;color:var(--brand)}
+    .brand .tag{font-size:13px;color:var(--muted)}
+    .meta{min-width:280px}
+    .meta table{width:100%;border-collapse:collapse}
+    .meta td{padding:4px 0;font-size:13px;vertical-align:top;}
+    .meta td:first-child{color:var(--muted);padding-right:10px;white-space:nowrap;}
+    h2{margin:0 0 8px 0;font-size:20px;color:var(--brand)}
+    h3{margin:16px 0 8px 0;font-size:16px;color:var(--brand)}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:10px;}
+    .panel{border:1px solid var(--border);border-radius:12px;padding:12px}
+    .panel .title{font-weight:600;color:var(--muted);font-size:12px;letter-spacing:.04em;text-transform:uppercase;margin-bottom:6px}
+    .panel .content p{margin:0;font-size:14px;line-height:1.5}
+    table.items{width:100%;border-collapse:collapse;margin-top:6px;border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+    table.items thead th{background:#F8F9FA;text-align:left;padding:10px;font-size:13px;color:var(--muted);border-bottom:1px solid var(--border)}
+    table.items tbody td{padding:12px 10px;border-bottom:1px solid var(--border);font-size:14px;vertical-align:top}
+    table.items tfoot td{padding:8px 10px;font-size:14px}
+    .num{text-align:right;white-space:nowrap}
+    .totals{display:grid;grid-template-columns:1fr minmax(260px, 320px);gap:16px;margin-top:16px;align-items:start}
+    .sum{border:1px solid var(--border);border-radius:12px;padding:12px}
+    .sum table{width:100%;border-collapse:collapse}
+    .sum td{padding:6px 0;font-size:14px}
+    .sum tr td:first-child{color:var(--muted)}
+    .sum tr.total td{font-weight:700;border-top:1px solid var(--border);padding-top:10px;color:var(--brand)}
+    .notes{border:1px dashed var(--border);border-radius:12px;padding:12px;font-size:12.5px;color:#374151}
+    footer{margin-top:18px;border-top:1px solid var(--border);padding-top:12px;color:var(--muted);font-size:12px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+    .badge{display:inline-block;background:rgba(0,110,255,.08);color:#006EFF;border:1px solid rgba(0,110,255,.25);padding:2px 8px;border-radius:999px;font-size:12px}
+    @media print{
+      body{background:#fff}
+      .container{border:none;margin:0;padding:0}
+      header{margin-top:0}
+      .no-print{display:none !important}
+      a{color:inherit;text-decoration:none}
+      @page{size:A4;margin:16mm}
+      tr{page-break-inside:avoid}
+    }
+    .muted{color:var(--muted)}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="brand" itemprop="provider" itemscope itemtype="https://schema.org/Organization">
+        <div class="name" itemprop="name">${userData.firstName} ${userData.lastName}</div>
+        <div class="tag">${userData.baseline || 'Micro-entrepreneur'}</div>
+        <div class="muted" style="font-size:13px;">
+          <span itemprop="address">${userData.address.replace(/\n/g, '<br/>')}</span><br/>
+          SIRET : <span itemprop="taxID">${userData.siret}</span> — APE/NAF : ${userData.ape}<br/>
+          ${userData.tva ? `N° TVA intracommunautaire : ${userData.tva}<br/>` : ''}
+        </div>
+      </div>
+      <div class="meta">
+        <h2>Facture</h2>
+        <table>
+          <tr><td>N° de facture</td><td itemprop="confirmationNumber">${invoiceNumber}</td></tr>
+          <tr><td>Date d'émission</td><td itemprop="billingDate">${invoiceDate}</td></tr>
+          <tr><td>Date d'échéance</td><td itemprop="paymentDueDate">${dueDate}</td></tr>
+          <tr><td>Devise</td><td>EUR</td></tr>
+        </table>
+      </div>
+    </header>
+
+    <div class="grid">
+      <section class="panel">
+        <div class="title">Client</div>
+        <div class="content" itemprop="customer" itemscope itemtype="https://schema.org/Organization">
+          <p><strong itemprop="name">TASKALYS</strong><br/>
+          <span class="muted" itemprop="address">7 rue de l'Ouche de Versailles<br/>44000 Nantes</span><br/>
+          SIREN : <span itemprop="taxID">992 303 412</span> — SIRET : 992 303 412 00017<br/>
+          APE : 6201Z</p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="title">Paiement</div>
+        <div class="content">
+          <p>
+            Mode : Virement bancaire<br/>
+            IBAN : ${userData.iban}<br/>
+            ${userData.bic ? `BIC : ${userData.bic}<br/>` : ''}
+            Conditions : À réception<br/>
+          </p>
+        </div>
+      </section>
+    </div>
+
+    <section>
+      <h3>Détails</h3>
+      <table class="items" itemprop="referencesOrder">
+        <thead>
+          <tr>
+            <th style="width:50%">Description</th>
+            <th style="width:12%">Qté</th>
+            <th style="width:18%">Prix unitaire</th>
+            <th style="width:20%" class="num">Montant HT</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <strong>Prestation de service - Business developper - Prospection et vente, paiement au résulat</strong><br/>
+              <span class="muted">Gestion commerciale et prospection client</span>
+            </td>
+            <td class="num">1</td>
+            <td class="num">250,00 €</td>
+            <td class="num">250,00 €</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="totals">
+      <div class="notes panel">
+        <div class="title">Mentions</div>
+        <p>
+          <span class="badge">Micro‑entreprise</span>
+          <br/>TVA non applicable, art. 293 B du CGI.
+        </p>
+        <p>
+          Pénalités de retard exigibles le jour suivant la date d'échéance : taux d'intérêt
+          légal majoré de 3 points et indemnité forfaitaire de 40 € pour frais de recouvrement (art. L441‑10 C. com.).
+        </p>
+      </div>
+
+      <div class="sum">
+        <table>
+          <tr><td>Sous‑total HT</td><td class="num">250,00 €</td></tr>
+          <tr><td>TVA (0 %)</td><td class="num">0,00 €</td></tr>
+          <tr class="total"><td>Total à payer</td><td class="num" itemprop="totalPaymentDue">250,00 €</td></tr>
+        </table>
+      </div>
+    </section>
+
+    <footer>
+      <div>
+        © ${today.getFullYear()} ${userData.firstName} ${userData.lastName} — Tous droits réservés
+      </div>
+      <div>
+        ${userData.email}${userData.phone ? ` — ${userData.phone}` : ''}${userData.website ? ` — ${userData.website}` : ''}
+      </div>
+    </footer>
+  </div>
+</body>
+</html>`;
+}
+
+// Generate invoice PDF from HTML using print function
+async function generateInvoicePDF(userData) {
+    const today = new Date();
+    const invoiceNumber = `${userData.lastName.toUpperCase()}-${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    
+    // Generate HTML
+    const htmlContent = generateInvoiceHTML(userData);
+    
+    // Create a temporary window for printing
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+    
+    // Wait for content to load then trigger print
+    printWindow.onload = () => {
+        setTimeout(() => {
+            printWindow.print();
+            // Close window after print dialog
+            setTimeout(() => {
+                printWindow.close();
+            }, 100);
+        }, 500);
+    };
+}
+
+// Save invoice form data to localStorage
+function saveInvoiceFormData(userData) {
+    try {
+        const formData = {
+            siret: userData.siret,
+            ape: userData.ape,
+            tva: userData.tva,
+            baseline: userData.baseline,
+            address: userData.address,
+            iban: userData.iban,
+            bic: userData.bic,
+            phone: userData.phone,
+            website: userData.website,
+            savedAt: new Date().toISOString()
+        };
+        
+        localStorage.setItem('invoiceFormData', JSON.stringify(formData));
+    } catch (error) {
+        console.error('Error saving invoice form data:', error);
+    }
+}
+
+// Restore invoice form data from localStorage
+function restoreInvoiceFormData() {
+    try {
+        const savedData = localStorage.getItem('invoiceFormData');
+        if (!savedData) return;
+        
+        const formData = JSON.parse(savedData);
+        
+        // Only restore if data was saved less than 1 year ago
+        const savedDate = new Date(formData.savedAt);
+        const oneYearAgo = new Date();
+        oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+        
+        if (savedDate < oneYearAgo) {
+            localStorage.removeItem('invoiceFormData');
+            return;
+        }
+        
+        // Restore form fields
+        const fields = [
+            { id: 'invoiceSiret', value: formData.siret },
+            { id: 'invoiceApe', value: formData.ape },
+            { id: 'invoiceTva', value: formData.tva },
+            { id: 'invoiceBaseline', value: formData.baseline },
+            { id: 'invoiceAddress', value: formData.address },
+            { id: 'invoiceIban', value: formData.iban },
+            { id: 'invoiceBic', value: formData.bic },
+            { id: 'invoicePhone', value: formData.phone },
+            { id: 'invoiceWebsite', value: formData.website }
+        ];
+        
+        fields.forEach(field => {
+            const element = document.getElementById(field.id);
+            if (element && field.value) {
+                element.value = field.value;
+            }
+        });
+
+        // Ajout : chaque input doit enregistrer la valeur dans le cache local à la modification
+        fields.forEach(field => {
+            const el = document.getElementById(field.id);
+            if (el) {
+                el.addEventListener('input', () => {
+                    const userData = {
+                        siret: document.getElementById('invoiceSiret')?.value || '',
+                        ape: document.getElementById('invoiceApe')?.value || '',
+                        tva: document.getElementById('invoiceTva')?.value || '',
+                        baseline: document.getElementById('invoiceBaseline')?.value || '',
+                        address: document.getElementById('invoiceAddress')?.value || '',
+                        iban: document.getElementById('invoiceIban')?.value || '',
+                        bic: document.getElementById('invoiceBic')?.value || '',
+                        phone: document.getElementById('invoicePhone')?.value || '',
+                        website: document.getElementById('invoiceWebsite')?.value || ''
+                    };
+                    saveInvoiceFormData(userData);
+                });
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error restoring invoice form data:', error);
+        // Clear corrupted data
+        localStorage.removeItem('invoiceFormData');
+    }
+}
+
+
 
