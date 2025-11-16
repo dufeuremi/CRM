@@ -155,8 +155,8 @@ class AnalyticsManager {
         // Comparison chart controls
         const comparisonPeriod = document.getElementById('comparisonPeriod');
         const toggleComparisonCalls = document.getElementById('toggleComparisonCalls');
-        const toggleComparisonPickupRate = document.getElementById('toggleComparisonPickupRate');
-        const toggleComparisonMeetingRate = document.getElementById('toggleComparisonMeetingRate');
+        const toggleComparisonAnswered = document.getElementById('toggleComparisonAnswered');
+        const toggleComparisonMeetings = document.getElementById('toggleComparisonMeetings');
 
         if (comparisonPeriod) {
             comparisonPeriod.addEventListener('change', () => this.updateComparisonChart());
@@ -166,12 +166,12 @@ class AnalyticsManager {
             toggleComparisonCalls.addEventListener('change', () => this.updateComparisonChart());
         }
 
-        if (toggleComparisonPickupRate) {
-            toggleComparisonPickupRate.addEventListener('change', () => this.updateComparisonChart());
+        if (toggleComparisonAnswered) {
+            toggleComparisonAnswered.addEventListener('change', () => this.updateComparisonChart());
         }
 
-        if (toggleComparisonMeetingRate) {
-            toggleComparisonMeetingRate.addEventListener('change', () => this.updateComparisonChart());
+        if (toggleComparisonMeetings) {
+            toggleComparisonMeetings.addEventListener('change', () => this.updateComparisonChart());
         }
 
         // Call Activity period selector
@@ -1389,17 +1389,17 @@ class AnalyticsManager {
 
             // Get toggles state
             const showCalls = document.getElementById('toggleComparisonCalls')?.checked ?? true;
-            const showPickupRate = document.getElementById('toggleComparisonPickupRate')?.checked ?? true;
-            const showMeetingRate = document.getElementById('toggleComparisonMeetingRate')?.checked ?? true;
+            const showAnswered = document.getElementById('toggleComparisonAnswered')?.checked ?? true;
+            const showMeetings = document.getElementById('toggleComparisonMeetings')?.checked ?? true;
 
-            console.log('Toggles state:', { showCalls, showPickupRate, showMeetingRate });
+            console.log('Toggles state:', { showCalls, showAnswered, showMeetings });
 
             // Create chart
             this.createComparisonChart(userTimeSeriesData, selectedUserIds, {
                 showCalls,
-                showPickupRate,
-                showMeetingRate
-            });
+                showAnswered,
+                showMeetings
+            }, dateFilter);
 
         } catch (error) {
             console.error('Error updating comparison chart:', error);
@@ -1414,6 +1414,8 @@ class AnalyticsManager {
     async getUserTimeSeriesData(userId, dateFilter) {
         try {
             console.log(`=== Getting time series data for user ${userId} ===`);
+            console.log('Date filter:', dateFilter);
+            
             // Get user info
             const { data: user } = await this.supabase
                 .from('users')
@@ -1426,26 +1428,35 @@ class AnalyticsManager {
             // Get calls data for time series
             let callsQuery = this.supabase
                 .from('crm_calls')
-                .select('date, pickup, rdv')
+                .select('*')
                 .eq('user_id', userId);
 
-            if (dateFilter.start && dateFilter.end) {
-                callsQuery = callsQuery.gte('date', dateFilter.start).lte('date', dateFilter.end);
-                console.log(`Filtering calls between ${dateFilter.start} and ${dateFilter.end}`);
+            if (dateFilter && dateFilter.start && dateFilter.end) {
+                const startDate = dateFilter.start.split('T')[0];
+                const endDate = dateFilter.end.split('T')[0];
+                callsQuery = callsQuery.gte('date', startDate).lte('date', endDate);
+                console.log(`Filtering calls between ${startDate} and ${endDate}`);
             }
 
             const { data: calls, error } = await callsQuery.order('date');
-            console.log(`Found ${calls?.length || 0} calls for user ${userId}:`, calls);
             
             if (error) {
                 console.error('Error fetching calls:', error);
+                console.error('Error details:', JSON.stringify(error, null, 2));
+                // Continue with empty data
+                return {
+                    userId,
+                    userName: `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || user?.email || 'Utilisateur',
+                    dailyStats: {}
+                };
             }
+            
+            console.log(`Found ${calls?.length || 0} calls for user ${userId}:`, calls);
 
             // Group by date and calculate metrics
             const dailyStats = {};
             calls?.forEach(call => {
                 const date = call.date.split('T')[0]; // Get date part only
-                console.log('Processing call date:', call.date, '-> extracted date:', date);
                 if (!dailyStats[date]) {
                     dailyStats[date] = {
                         totalCalls: 0,
@@ -1454,23 +1465,21 @@ class AnalyticsManager {
                     };
                 }
                 dailyStats[date].totalCalls++;
-                if (call.pickup) dailyStats[date].pickups++;
-                if (call.rdv) dailyStats[date].meetings++;
+                
+                // Count as answered if deposit_type is 'recorded' or 'not_recorded' (not 'not_responded')
+                if (call.deposit_type === 'recorded' || call.deposit_type === 'not_recorded') {
+                    dailyStats[date].pickups++;
+                }
+                
+                // Count meetings - check if the call object has a 'booked' property (might be in JSON fields)
+                // Since 'booked' doesn't exist in schema, we'll check the bdr_performance or tools JSON fields
+                // Or simply skip meetings for now as it's not in the base schema
+                if (call.bdr_performance && typeof call.bdr_performance === 'object' && call.bdr_performance.meeting_booked) {
+                    dailyStats[date].meetings++;
+                }
             });
 
-            console.log('Daily stats for user:', dailyStats);
-
-            // If no data, add some sample data for current period for testing
-            if (Object.keys(dailyStats).length === 0) {
-                console.log('No data found, adding sample data for testing');
-                const today = new Date();
-                const todayStr = today.toISOString().split('T')[0];
-                dailyStats[todayStr] = {
-                    totalCalls: 5,
-                    pickups: 3,
-                    meetings: 1
-                };
-            }
+            console.log(`Daily stats for user ${userId}:`, dailyStats);
 
             return {
                 userId,
@@ -1487,7 +1496,7 @@ class AnalyticsManager {
         }
     }
 
-    createComparisonChart(userTimeSeriesData, selectedUserIds, toggles) {
+    createComparisonChart(userTimeSeriesData, selectedUserIds, toggles, dateFilter = null) {
         const ctx = document.getElementById('comparisonChart').getContext('2d');
 
         // Destroy existing chart
@@ -1495,14 +1504,13 @@ class AnalyticsManager {
             this.charts.comparison.destroy();
         }
 
-        // Get date range from filters
-        const dateFilter = this.getDateFilter();
+        // Get all dates from user data
         let allDates = [];
         
-        if (dateFilter.start && dateFilter.end) {
+        if (dateFilter && dateFilter.start && dateFilter.end) {
             // Generate all dates in the range
-            const startDate = new Date(dateFilter.start + 'T00:00:00');
-            const endDate = new Date(dateFilter.end + 'T00:00:00');
+            const startDate = new Date(dateFilter.start);
+            const endDate = new Date(dateFilter.end);
             
             const currentDate = new Date(startDate);
             while (currentDate <= endDate) {
@@ -1523,11 +1531,8 @@ class AnalyticsManager {
 
         // Format dates for display
         const formattedDates = allDates.map(dateStr => {
-            const date = new Date(dateStr + 'T00:00:00');
-            return date.toLocaleDateString('fr-FR', { 
-                day: '2-digit', 
-                month: '2-digit' 
-            });
+            const [year, month, day] = dateStr.split('-');
+            return `${day}/${month}`;
         });
         console.log('Formatted dates:', formattedDates);
 
@@ -1551,44 +1556,43 @@ class AnalyticsManager {
                     data: callsData,
                     borderColor: color,
                     backgroundColor: color + '20',
-                    tension: 0.1,
+                    tension: 0.4,
+                    fill: true,
                     yAxisID: 'y'
                 });
             }
 
-            if (toggles.showPickupRate) {
-                const pickupRateData = allDates.map(date => {
-                    const stats = userData.dailyStats[date];
-                    if (!stats || stats.totalCalls === 0) return 0;
-                    return Math.round((stats.pickups / stats.totalCalls) * 100);
+            if (toggles.showAnswered) {
+                const answeredData = allDates.map(date => {
+                    return userData.dailyStats[date]?.pickups || 0;
                 });
 
                 datasets.push({
-                    label: `${userData.userName} - Taux réponse (%)`,
-                    data: pickupRateData,
+                    label: `${userData.userName} - Décrochés`,
+                    data: answeredData,
                     borderColor: color,
                     backgroundColor: color + '20',
                     borderDash: [5, 5],
-                    tension: 0.1,
-                    yAxisID: 'y1'
+                    tension: 0.4,
+                    fill: true,
+                    yAxisID: 'y'
                 });
             }
 
-            if (toggles.showMeetingRate) {
-                const meetingRateData = allDates.map(date => {
-                    const stats = userData.dailyStats[date];
-                    if (!stats || stats.totalCalls === 0) return 0;
-                    return Math.round((stats.meetings / stats.totalCalls) * 100);
+            if (toggles.showMeetings) {
+                const meetingsData = allDates.map(date => {
+                    return userData.dailyStats[date]?.meetings || 0;
                 });
 
                 datasets.push({
-                    label: `${userData.userName} - Taux RDV (%)`,
-                    data: meetingRateData,
+                    label: `${userData.userName} - RDV`,
+                    data: meetingsData,
                     borderColor: color,
                     backgroundColor: color + '20',
                     borderDash: [2, 2],
-                    tension: 0.1,
-                    yAxisID: 'y1'
+                    tension: 0.4,
+                    fill: true,
+                    yAxisID: 'y'
                 });
             }
         });
@@ -1611,14 +1615,34 @@ class AnalyticsManager {
                     legend: {
                         position: 'top',
                         labels: {
+                            font: {
+                                family: 'Sora',
+                                size: 12
+                            },
+                            color: '#19273A',
                             usePointStyle: true,
-                            padding: 20
+                            padding: 15
                         }
                     },
                     tooltip: {
+                        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                        titleColor: '#19273A',
+                        bodyColor: '#1D2B3D',
+                        borderColor: '#7b90ad',
+                        borderWidth: 1,
+                        padding: 12,
+                        displayColors: true,
                         callbacks: {
                             title: function(context) {
                                 return `Date: ${context[0].label}`;
+                            },
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) {
+                                    label += ': ';
+                                }
+                                label += context.parsed.y;
+                                return label;
                             }
                         }
                     }
@@ -1628,11 +1652,25 @@ class AnalyticsManager {
                         display: true,
                         title: {
                             display: true,
-                            text: 'Date'
+                            text: 'Date',
+                            font: {
+                                family: 'Sora',
+                                size: 12
+                            },
+                            color: '#1D2B3D'
                         },
                         ticks: {
                             maxRotation: 45,
-                            minRotation: 45
+                            minRotation: 45,
+                            font: {
+                                family: 'Sora',
+                                size: 11
+                            },
+                            color: '#7b90ad'
+                        },
+                        grid: {
+                            color: 'rgba(123, 144, 173, 0.1)',
+                            drawBorder: false
                         }
                     },
                     y: {
@@ -1641,23 +1679,12 @@ class AnalyticsManager {
                         position: 'left',
                         title: {
                             display: true,
-                            text: 'Nombre d\'appels'
-                        },
-                        beginAtZero: true
-                    },
-                    y1: {
-                        type: 'linear',
-                        display: true,
-                        position: 'right',
-                        title: {
-                            display: true,
-                            text: 'Pourcentage (%)'
+                            text: 'Nombre'
                         },
                         beginAtZero: true,
-                        max: 100,
-                        grid: {
-                            drawOnChartArea: false,
-                        },
+                        ticks: {
+                            stepSize: 1
+                        }
                     }
                 }
             }

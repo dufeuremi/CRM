@@ -3561,6 +3561,25 @@ function setProspectRowDepositing(prospectId, isDepositing) {
     });
 }
 
+// Set prospect row completed state (green border with badge)
+function setProspectRowCompleted(prospectId) {
+    // Find the prospect row in the table
+    const prospectRows = document.querySelectorAll(`tr[data-prospect-id="${prospectId}"]`);
+    
+    prospectRows.forEach(row => {
+        // Remove depositing animation if still present
+        row.classList.remove('prospect-row-depositing');
+        
+        // Add completed state
+        row.classList.add('prospect-row-completed');
+        
+        // Remove completed state after 5 seconds
+        setTimeout(() => {
+            row.classList.remove('prospect-row-completed');
+        }, 5000);
+    });
+}
+
 // Check if agent task exists for prospect
 async function waitForAgentTask(prospectId, maxWaitTime = 30000) {
     const startTime = Date.now();
@@ -3783,35 +3802,18 @@ async function confirmDepot() {
         // Start prospect row animation
         setProspectRowDepositing(prospectId, true);
         
-        // Add to pending depots map
+        // Add to pending depots map with timestamp
         pendingDepots.set(prospectId, Date.now());
-        console.log('Added prospect to pending depots:', prospectId);
+        console.log('✅ Added prospect to pending depots:', prospectId, 'Current pending:', Array.from(pendingDepots.keys()));
     
         // Hide modal
         hideDepotModal();
     
         // Show success message
-        showToast('Dépôt envoyé à l\'IA - Analyse en cours...');
+        showToast('Dépôt envoyé à l\'IA - Analyse en cours...', 'info');
         
-        // Wait for agent task to arrive (with timeout)
-        const taskArrived = await waitForAgentTask(prospectId, 30000);
-        
-        // If still pending (not already stopped by real-time), stop now
-        if (pendingDepots.has(prospectId)) {
-            setDepotButtonLoading(prospectId, false);
-            setProspectRowDepositing(prospectId, false);
-            pendingDepots.delete(prospectId);
-        }
-        
-        if (taskArrived) {
-            // Reload agent tasks to show the new suggestion
-            if (typeof loadAgentTasks === 'function') {
-                loadAgentTasks();
-            }
-            showToast('✨ Analyse terminée ! Suggestion de l\'agent disponible', 'success');
-        } else {
-            showToast('L\'analyse prend plus de temps que prévu', 'warning');
-        }
+        // The polling system will automatically stop the animation when the task arrives
+        // No need to wait here, just let the polling handle it
         
     } catch (error) {
         console.error('Error sending depot:', error);
@@ -8216,76 +8218,109 @@ function showNewTaskSkeleton() {
     agentEventsList.insertAdjacentHTML('afterbegin', skeletonHtml);
 }
 
-// Subscribe to agent tasks (real-time)
+// Subscribe to agent tasks (polling method)
+let pollingInterval = null;
+let lastCheckTimestamp = null;
+
 function subscribeToAgentTasks() {
-    console.log('subscribeToAgentTasks called');
-    if (agentChannel) {
-        console.log('Removing existing channel');
-        supabase.removeChannel(agentChannel);
+    console.log('Starting agent tasks polling');
+    
+    // Clear existing interval if any
+    if (pollingInterval) {
+        clearInterval(pollingInterval);
     }
     
-    console.log('Creating new subscription channel');
-    agentChannel = supabase
-        .channel('agent-tasks-changes')
-        .on(
-            'postgres_changes',
-            {
-                event: '*',
-                schema: 'public',
-                table: 'crm_agent_tasks',
-                filter: `human_checking=eq.false`
-            },
-            (payload) => {
-                console.log('Agent task change detected:', payload);
-                console.log('Event type:', payload.eventType);
+    // Initialize last check timestamp
+    lastCheckTimestamp = new Date().toISOString();
+    
+    // Poll every 3 seconds
+    pollingInterval = setInterval(async () => {
+        // Only poll if there are pending depots
+        if (pendingDepots.size === 0) {
+            console.log('⏸️ No pending depots, skipping poll');
+            return;
+        }
+        
+        console.log(`🔍 Polling for new agent tasks... (${pendingDepots.size} pending depots:`, Array.from(pendingDepots.keys()) + ')');
+        
+        try {
+            // Check for new tasks created after last check
+            const { data: newTasks, error } = await supabase
+                .from('crm_agent_tasks')
+                .select('*')
+                .eq('human_checking', false)
+                .gte('created_at', lastCheckTimestamp)
+                .order('created_at', { ascending: false });
+            
+            if (error) {
+                console.error('❌ Error polling agent tasks:', error);
+                return;
+            }
+            
+            console.log(`📋 Found ${newTasks?.length || 0} new task(s) since ${lastCheckTimestamp}`);
+            
+            if (newTasks && newTasks.length > 0) {
+                console.log('New tasks:', newTasks.map(t => `ID:${t.id} Prospect:${t.prospect_id}`).join(', '));
                 
-                // Handle new tasks
-                if (payload.eventType === 'INSERT' && payload.new && !payload.new.human_checking) {
-                    console.log('New task detected, processing...');
+                // Update last check timestamp to now
+                lastCheckTimestamp = new Date().toISOString();
+                
+                // Process each new task
+                newTasks.forEach(task => {
+                    const taskProspectId = task.prospect_id;
+                    console.log(`Checking task for prospect ${taskProspectId}...`);
                     
-                    // Check if this task is for a pending depot
-                    const taskProspectId = payload.new.prospect_id;
                     if (taskProspectId && pendingDepots.has(taskProspectId)) {
-                        console.log('Task received for pending depot, stopping animations for prospect:', taskProspectId);
+                        console.log(`✅✅✅ MATCH! Task received for pending depot ${taskProspectId}, stopping animations`);
                         
                         // Stop loading animations immediately
                         setDepotButtonLoading(taskProspectId, false);
                         setProspectRowDepositing(taskProspectId, false);
                         
+                        // Add completed animation
+                        setProspectRowCompleted(taskProspectId);
+                        
                         // Remove from pending depots
                         pendingDepots.delete(taskProspectId);
+                        console.log('Remaining pending depots:', Array.from(pendingDepots.keys()));
                         
                         // Show success toast
                         showToast('✨ Analyse terminée ! Suggestion disponible', 'success');
+                    } else {
+                        console.log(`⚠️ Task for prospect ${taskProspectId} not in pending list`);
                     }
                     
                     // Show skeleton for new task
                     showNewTaskSkeleton();
-                    
-                    // Auto-open sidebar if closed
-                    const agentSidebar = document.getElementById('agentSidebar');
-                    if (agentSidebar && !agentSidebar.classList.contains('open')) {
-                        toggleAgentSidebar();
-                    }
-                    
-                    // Play sound only if NOT a manual creation and not played recently
-                    const now = Date.now();
-                    if (!manualTaskCreation && (now - lastSoundPlayTime > 2000)) {
-                        lastSoundPlayTime = now;
-                        console.log('Playing notification sound');
-                        setTimeout(() => {
-                            agentNotificationSound.play().catch(err => console.error('Error playing sound:', err));
-                        }, 300);
-                    } else {
-                        console.log('Sound skipped - manual creation or too soon after last play');
-                    }
+                });
+                
+                // Auto-open sidebar if closed
+                const agentSidebar = document.getElementById('agentSidebar');
+                if (agentSidebar && !agentSidebar.classList.contains('open')) {
+                    toggleAgentSidebar();
                 }
                 
-                // Reload tasks (will replace skeleton with real task)
+                // Play sound only if NOT a manual creation and not played recently
+                const now = Date.now();
+                if (!manualTaskCreation && (now - lastSoundPlayTime > 2000)) {
+                    lastSoundPlayTime = now;
+                    console.log('Playing notification sound');
+                    setTimeout(() => {
+                        agentNotificationSound.play().catch(err => console.error('Error playing sound:', err));
+                    }, 300);
+                } else {
+                    console.log('Sound skipped - manual creation or too soon after last play');
+                }
+                
+                // Reload tasks
                 loadAgentTasks();
             }
-        )
-        .subscribe();
+        } catch (error) {
+            console.error('Error in polling:', error);
+        }
+    }, 3000); // Poll every 3 seconds
+    
+    console.log('Agent tasks polling started');
 }
 
 // Get time ago string

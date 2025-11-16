@@ -3988,8 +3988,8 @@ body::before {
         rgba(59, 130, 246, 0.08) 10px,
         rgba(59, 130, 246, 0.08) 20px
     );
-    background-size: 28px 28px;
-    animation: prospect-depositing-dashes 1.5s linear infinite;
+    background-size: 28.28px 28.28px; /* sqrt(20^2 + 20^2) pour un pattern parfait à 45° */
+    animation: prospect-depositing-dashes 2s linear infinite;
 }
 
 @keyframes prospect-depositing-dashes {
@@ -3997,7 +3997,7 @@ body::before {
         background-position: 0 0;
     }
     100% {
-        background-position: 40px 0;
+        background-position: 28.28px 0;
     }
 }
 
@@ -4005,6 +4005,52 @@ body::before {
 .prospect-row-depositing td {
     position: relative;
     z-index: 2;
+}
+
+/* Animation de traitement terminé */
+.prospect-row-completed {
+    position: relative;
+    border: 2px solid #16a34a !important;
+    background-color: rgba(22, 163, 74, 0.05) !important;
+    animation: completed-pulse 0.5s ease-in-out;
+}
+
+@keyframes completed-pulse {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.01);
+    }
+}
+
+.prospect-row-completed::before {
+    content: 'Traitement terminé ✓';
+    position: absolute;
+    top: -12px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%);
+    color: white;
+    padding: 4px 16px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    z-index: 1000;
+    box-shadow: 0 2px 8px rgba(22, 163, 74, 0.3);
+    animation: badge-slide-in 0.3s ease-out;
+}
+
+@keyframes badge-slide-in {
+    0% {
+        opacity: 0;
+        top: -20px;
+    }
+    100% {
+        opacity: 1;
+        top: -12px;
+    }
 }
 
 .firm-field {
