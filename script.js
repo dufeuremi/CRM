@@ -8119,7 +8119,8 @@ async function handleAgentEventAction(e) {
             const { error } = await supabase
                 .from('crm_agent_tasks')
                 .delete()
-                .eq('id', taskId);
+                .eq('id', taskId)
+                .eq('user_id', window.currentUserId);
             
             if (error) throw error;
             
@@ -8154,6 +8155,7 @@ async function handleAgentEventAction(e) {
                 .from('crm_agent_tasks')
                 .select('*')
                 .eq('id', taskId)
+                .eq('user_id', window.currentUserId)
                 .single();
             
             if (fetchError) throw fetchError;
@@ -8279,10 +8281,11 @@ function subscribeToAgentTasks() {
         console.log(`🔍 Polling for new agent tasks... (${pendingDepots.size} pending depots:`, Array.from(pendingDepots.keys()) + ')');
         
         try {
-            // Check for new tasks created after last check
+            // Check for new tasks created after last check (only for current user)
             const { data: newTasks, error } = await supabase
                 .from('crm_agent_tasks')
                 .select('*')
+                .eq('user_id', window.currentUserId)
                 .eq('human_checking', false)
                 .gte('created_at', lastCheckTimestamp)
                 .order('created_at', { ascending: false });
