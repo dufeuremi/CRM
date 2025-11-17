@@ -1017,6 +1017,10 @@
                             <input type="radio" name="depotStatus" value="no_contact">
                             <span class="depot-option-label">N'a pas décroché</span>
                         </label>
+                        <label class="depot-option" data-value="booked">
+                            <input type="radio" name="depotStatus" value="booked">
+                            <span class="depot-option-label">RDV réservé</span>
+                        </label>
                         <label class="depot-option" data-value="in_app_recording" id="inAppRecordingOption" style="display: none;">
                             <div class="depot-option-header">
                                 <input type="radio" name="depotStatus" value="in_app_recording">
@@ -1377,6 +1381,20 @@
 
         // Initialize auth check
         checkAuth();
+        // Force agent section initialization after auth (affiche suggestions même si sidebar non ouverte)
+        document.addEventListener('DOMContentLoaded', () => {
+            // Attendre que l'utilisateur soit chargé (window.currentUserId)
+            const waitUser = setInterval(() => {
+                if (window.supabaseClient && window.currentUserId) {
+                    clearInterval(waitUser);
+                    if (typeof initAgentSection === 'function') {
+                        initAgentSection();
+                    }
+                }
+            }, 100);
+            // Timeout après 5s
+            setTimeout(() => clearInterval(waitUser), 5000);
+        });
     </script>
     
     <!-- Toast Container -->

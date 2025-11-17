@@ -315,7 +315,7 @@ class AnalyticsManager {
             const newProspects = prospects.length;
             const qualifiedProspects = prospects.filter(p => p.pipeline_status && p.pipeline_status !== '').length;
             const bookedProspects = prospects.filter(p => p.booked === true).length;
-            const convertedProspects = prospects.filter(p => p.convertion_date).length;
+            const convertedProspects = prospects.filter(p => p.conversion_date).length;
             
             // Calculate rates
             const qualificationRate = newProspects > 0 ? Math.round((qualifiedProspects / newProspects) * 100) : 0;
@@ -323,12 +323,12 @@ class AnalyticsManager {
             const clientConversionRate = newProspects > 0 ? Math.round((convertedProspects / newProspects) * 100) : 0;
 
             // Calculate average conversion time
-            const convertedWithTime = prospects.filter(p => p.convertion_date && p.created_at);
+            const convertedWithTime = prospects.filter(p => p.conversion_date && p.created_at);
             let avgConversionTime = 0;
             if (convertedWithTime.length > 0) {
                 const totalDays = convertedWithTime.reduce((sum, p) => {
                     const created = new Date(p.created_at);
-                    const converted = new Date(p.convertion_date);
+                    const converted = new Date(p.conversion_date);
                     const diffDays = Math.ceil((converted - created) / (1000 * 60 * 60 * 24));
                     return sum + diffDays;
                 }, 0);
@@ -366,7 +366,8 @@ class AnalyticsManager {
                 const daysAgo = parseInt(period);
                 const endDate = new Date();
                 const startDate = new Date();
-                startDate.setDate(endDate.getDate() - daysAgo);
+                // Correction : inclure la journée en cours (+1)
+                startDate.setDate(endDate.getDate() - daysAgo + 1);
                 
                 dateFilter = {
                     start: startDate.toISOString(),
@@ -397,11 +398,16 @@ class AnalyticsManager {
             const avgTemperature = calls.length > 0 ? 
                 Math.round(calls.reduce((sum, call) => sum + (call.temperature || 0), 0) / calls.length) : 0;
 
-            // Update UI
-            document.getElementById('callsCount').textContent = totalCalls;
-            document.getElementById('avgCallDuration').textContent = `${avgDuration}min`;
-            document.getElementById('positiveCallsRate').textContent = `${positiveRate}%`;
-            document.getElementById('avgTemperature').textContent = avgTemperature;
+            // Update UI - with null checks
+            const callsCountEl = document.getElementById('callsCount');
+            const avgCallDurationEl = document.getElementById('avgCallDuration');
+            const positiveCallsRateEl = document.getElementById('positiveCallsRate');
+            const avgTemperatureEl = document.getElementById('avgTemperature');
+            
+            if (callsCountEl) callsCountEl.textContent = totalCalls;
+            if (avgCallDurationEl) avgCallDurationEl.textContent = `${avgDuration}min`;
+            if (positiveCallsRateEl) positiveCallsRateEl.textContent = `${positiveRate}%`;
+            if (avgTemperatureEl) avgTemperatureEl.textContent = avgTemperature;
 
             // Create charts
             this.createCallsPerDayChart(calls);
@@ -443,7 +449,7 @@ class AnalyticsManager {
             const assignedProspects = prospects.length;
             const bookedRdv = prospects.filter(p => p.booked === true).length;
             const totalCallsMade = calls.length;
-            const convertedProspects = prospects.filter(p => p.convertion_date).length;
+            const convertedProspects = prospects.filter(p => p.conversion_date).length;
             const globalConversionRate = assignedProspects > 0 ? Math.round((convertedProspects / assignedProspects) * 100) : 0;
             
             const contactedProspects = prospects.filter(p => p.called === true).length;
@@ -488,10 +494,14 @@ class AnalyticsManager {
             });
             const busyDaysCount = Object.values(eventsByDay).filter(count => count > 3).length;
 
-            // Update UI
-            document.getElementById('totalEvents').textContent = totalEvents;
-            document.getElementById('linkedEventsRate').textContent = `${linkedEventsRate}%`;
-            document.getElementById('busyDaysCount').textContent = busyDaysCount;
+            // Update UI - with null checks
+            const totalEventsEl = document.getElementById('totalEvents');
+            const linkedEventsRateEl = document.getElementById('linkedEventsRate');
+            const busyDaysCountEl = document.getElementById('busyDaysCount');
+            
+            if (totalEventsEl) totalEventsEl.textContent = totalEvents;
+            if (linkedEventsRateEl) linkedEventsRateEl.textContent = `${linkedEventsRate}%`;
+            if (busyDaysCountEl) busyDaysCountEl.textContent = busyDaysCount;
 
             // Create charts
             this.createWorkloadHeatmapChart(eventsByDay);
@@ -606,7 +616,7 @@ class AnalyticsManager {
                     };
                 }
                 segmentStats[segment].total++;
-                if (prospect.convertion_date) segmentStats[segment].converted++;
+                if (prospect.conversion_date) segmentStats[segment].converted++;
                 if (prospect.temperature) {
                     segmentStats[segment].totalTemperature += prospect.temperature;
                     segmentStats[segment].count++;
@@ -626,10 +636,14 @@ class AnalyticsManager {
             const avgTempBySource = prospects.length > 0 ? 
                 Math.round(prospects.reduce((sum, p) => sum + (p.temperature || 0), 0) / prospects.length) : 0;
 
-            // Update UI
-            document.getElementById('leadSources').textContent = leadSources;
-            document.getElementById('bestSourceConversion').textContent = `${Math.round(bestConversionRate)}%`;
-            document.getElementById('avgTempBySource').textContent = avgTempBySource;
+            // Update UI - with null checks
+            const leadSourcesEl = document.getElementById('leadSources');
+            const bestSourceConversionEl = document.getElementById('bestSourceConversion');
+            const avgTempBySourceEl = document.getElementById('avgTempBySource');
+            
+            if (leadSourcesEl) leadSourcesEl.textContent = leadSources;
+            if (bestSourceConversionEl) bestSourceConversionEl.textContent = `${Math.round(bestConversionRate)}%`;
+            if (avgTempBySourceEl) avgTempBySourceEl.textContent = avgTempBySource;
 
             // Create charts
             this.createSegmentDistributionChart(segmentStats);
@@ -1461,19 +1475,18 @@ class AnalyticsManager {
                     dailyStats[date] = {
                         totalCalls: 0,
                         pickups: 0,
+                        noPickups: 0,
                         meetings: 0
                     };
                 }
                 dailyStats[date].totalCalls++;
-                
-                // Count as answered if deposit_type is 'recorded' or 'not_recorded' (not 'not_responded')
+                // Comptage correct : pickups = décrochés, noPickups = non décrochés
                 if (call.deposit_type === 'recorded' || call.deposit_type === 'not_recorded') {
                     dailyStats[date].pickups++;
+                } else if (call.deposit_type === 'no_contact') {
+                    dailyStats[date].noPickups++;
                 }
-                
                 // Count meetings - check if the call object has a 'booked' property (might be in JSON fields)
-                // Since 'booked' doesn't exist in schema, we'll check the bdr_performance or tools JSON fields
-                // Or simply skip meetings for now as it's not in the base schema
                 if (call.bdr_performance && typeof call.bdr_performance === 'object' && call.bdr_performance.meeting_booked) {
                     dailyStats[date].meetings++;
                 }

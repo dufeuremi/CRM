@@ -1483,6 +1483,35 @@ body::before {
     color: var(--text-secondary);
     opacity: 0.5;
     width: 16px;
+}
+
+.booked-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 500;
+}
+
+.booked-status.booked-yes {
+    color: #16a34a;
+}
+
+.booked-status.booked-yes i,
+.booked-status.booked-yes svg {
+    color: #16a34a;
+    width: 16px;
+    height: 16px;
+}
+
+.booked-status.booked-no {
+    color: var(--text-secondary);
+}
+
+.booked-status.booked-no i,
+.booked-status.booked-no svg {
+    color: var(--text-secondary);
+    opacity: 0.5;
+    width: 16px;
     height: 16px;
 }
 

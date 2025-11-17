@@ -3551,11 +3551,20 @@ function setDepotButtonLoading(prospectId, isLoading) {
 function setProspectRowDepositing(prospectId, isDepositing) {
     // Find the prospect row in the table
     const prospectRows = document.querySelectorAll(`tr[data-prospect-id="${prospectId}"]`);
-    
     prospectRows.forEach(row => {
-        if (isDepositing) {
-            row.classList.add('prospect-row-depositing');
+        // Determine if row is eligible for blue dash animation
+        // Blue dash for normal (not planifié) and archivé
+        const isArchived = row.classList.contains('prospect-archived');
+        const isPlanifie = row.classList.contains('prospect-status-green') && !isArchived;
+        // Blue dash for normal (not planifié) and archivé
+        if ((isArchived || !isPlanifie)) {
+            if (isDepositing) {
+                row.classList.add('prospect-row-depositing');
+            } else {
+                row.classList.remove('prospect-row-depositing');
+            }
         } else {
+            // Always remove if not eligible
             row.classList.remove('prospect-row-depositing');
         }
     });
@@ -3565,18 +3574,25 @@ function setProspectRowDepositing(prospectId, isDepositing) {
 function setProspectRowCompleted(prospectId) {
     // Find the prospect row in the table
     const prospectRows = document.querySelectorAll(`tr[data-prospect-id="${prospectId}"]`);
-    
     prospectRows.forEach(row => {
         // Remove depositing animation if still present
         row.classList.remove('prospect-row-depositing');
-        
-        // Add completed state
-        row.classList.add('prospect-row-completed');
-        
-        // Remove completed state after 5 seconds
-        setTimeout(() => {
+
+        // Determine if row is eligible for green success animation
+        // Green for planifié and archivé
+        const isArchived = row.classList.contains('prospect-archived');
+        const isPlanifie = row.classList.contains('prospect-status-green') && !isArchived;
+        if (isPlanifie || isArchived) {
+            // Add completed state
+            row.classList.add('prospect-row-completed');
+            // Remove completed state after 5 seconds
+            setTimeout(() => {
+                row.classList.remove('prospect-row-completed');
+            }, 5000);
+        } else {
+            // Always remove if not eligible
             row.classList.remove('prospect-row-completed');
-        }, 5000);
+        }
     });
 }
 
@@ -3644,12 +3660,13 @@ async function confirmDepot() {
         }
     }
     
-    // Map deposit type - use values as specified: recorded, not_recorded, not_responded
+    // Map deposit type - use values as specified: recorded, not_recorded, not_responded, booked
     const depositTypeMap = {
         'recorded': 'recorded',
         'in_app_recording': 'recorded', // In-app recording is treated as recorded
         'not_recorded': 'not_recorded',
-        'no_contact': 'not_responded' // Changed from no_contact to not_responded
+        'no_contact': 'not_responded', // Changed from no_contact to not_responded
+        'booked': 'booked' // RDV réservé
     };
     const depositType = depositTypeMap[selectedStatus] || selectedStatus;
     
@@ -4036,9 +4053,18 @@ function fillProspectInfo(prospect) {
                 </span>
             </span>
         </div>
+        <div class="prospect-info-item">
+            <span class="prospect-info-label">RDV réservé</span>
+            <span class="prospect-info-value">
+                <span class="booked-status ${prospect.booked ? 'booked-yes' : 'booked-no'}">
+                    <i data-lucide="${prospect.booked ? 'calendar-check' : 'calendar-x'}"></i>
+                    ${prospect.booked ? 'Oui' : 'Non'}
+                </span>
+            </span>
+        </div>
     `;
     
-    // Reinitialize Lucide icons for called status
+    // Reinitialize Lucide icons for called status and booked status
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();
     }
@@ -6287,17 +6313,7 @@ document.addEventListener('DOMContentLoaded', () => {
         depotFileInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (file) {
-                // Validate file format
-                if (!isValidAudioFile(file)) {
-                    alert('Format de fichier non accepté. Veuillez sélectionner un fichier audio au format WAV, MP3 ou M4A uniquement.');
-                    depotFileInput.value = '';
-                    const uploadText = depotUploadZone.querySelector('.depot-upload-text');
-                    if (uploadText) {
-                        uploadText.textContent = 'Cliquez pour téléverser ou glissez-déposez le fichier';
-                    }
-                    return;
-                }
-                
+                // Ne pas afficher d'alerte de format non supporté, accepter le fichier
                 console.log('File selected:', file.name, file.type, file.size);
                 // Update upload zone text to show selected file
                 const uploadText = depotUploadZone.querySelector('.depot-upload-text');
@@ -7726,20 +7742,13 @@ async function loadAgentTasks() {
         agentEventsList.style.display = 'none';
         agentEmpty.style.display = 'none';
         
-        console.log('Loading agent tasks for user_id:', currentUserId);
+        console.log('Loading agent tasks for user_id:', window.currentUserId);
         
-        // Load ALL tasks to debug (no filters)
-        const { data: allTasks, error: allError } = await supabase
-            .from('crm_agent_tasks')
-            .select('*')
-            .order('created_at', { ascending: false });
-        
-        console.log('ALL tasks in database:', allTasks);
-        
-        // Now load with filters - try without JOIN first
+        // Load tasks for current user only
         const { data: tasks, error } = await supabase
             .from('crm_agent_tasks')
             .select('*')
+            .eq('user_id', window.currentUserId)
             .eq('human_checking', false)
             .order('created_at', { ascending: false });
         
@@ -7756,8 +7765,8 @@ async function loadAgentTasks() {
             for (let task of tasks) {
                 if (task.prospect_id) {
                     const { data: prospect } = await supabase
-                        .from('prospects')
-                        .select('id, nom, prenom, entreprise')
+                        .from('crm_prospects')
+                        .select('id, first_name, last_name, society')
                         .eq('id', task.prospect_id)
                         .single();
                     task.prospects = prospect;
@@ -7792,7 +7801,21 @@ async function loadAgentTasks() {
 function formatFriendlyDate(dateString) {
     if (!dateString) return 'Date non définie';
     
-    const targetDate = new Date(dateString);
+    // Supporte dateString sous forme 'YYYY-MM-DD', 'YYYY-MM-DDTHH:MM', ou objet {date, time}
+    let targetDate;
+    if (typeof dateString === 'object' && dateString !== null && dateString.date && dateString.time) {
+        targetDate = new Date(`${dateString.date}T${dateString.time}`);
+    } else if (typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+        // Format YYYY-MM-DD
+        targetDate = new Date(`${dateString}T00:00`);
+    } else if (typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(dateString)) {
+        targetDate = new Date(dateString);
+    } else if (typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(dateString)) {
+        // Format 'YYYY-MM-DD HH:MM'
+        targetDate = new Date(dateString.replace(' ', 'T'));
+    } else {
+        targetDate = new Date(dateString);
+    }
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
@@ -7810,7 +7833,8 @@ function formatFriendlyDate(dateString) {
     const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
     
     // Format time if available
-    const timeStr = dateString.includes('T') || dateString.includes(':') 
+    const dateStringStr = typeof dateString === 'string' ? dateString : (dateString?.date || '');
+    const timeStr = (dateStringStr.includes('T') || dateStringStr.includes(':') || (dateString?.time)) 
         ? ` à ${targetDate.getHours().toString().padStart(2, '0')}h${targetDate.getMinutes().toString().padStart(2, '0')}`
         : '';
     
@@ -7845,17 +7869,20 @@ function getEventDate(task) {
     
     switch(task.type) {
         case 'set_email':
-            return content.send_date;
-        case 'set_remind':
-            // Combine date and time if both exist
-            if (content.remind_date) {
-                return content.remind_time 
-                    ? `${content.remind_date}T${content.remind_time}`
-                    : content.remind_date;
+            if (content.scheduled_date && content.scheduled_time) {
+                return { date: content.scheduled_date, time: content.scheduled_time };
             }
-            return null;
+            return content.scheduled_date || null;
+        case 'set_remind':
+            if (content.remind_date && content.remind_time) {
+                return { date: content.remind_date, time: content.remind_time };
+            }
+            return content.remind_date || null;
         case 'send_visio':
-            return content.meeting_date;
+            if (content.meeting_date && content.meeting_time) {
+                return { date: content.meeting_date, time: content.meeting_time };
+            }
+            return content.meeting_date || null;
         default:
             return null;
     }
@@ -7896,8 +7923,8 @@ function renderAgentTasks(tasks) {
         
         // Get prospect info
         const prospect = task.prospects || {};
-        const prospectName = [prospect.prenom, prospect.nom].filter(Boolean).join(' ');
-        const prospectCompany = prospect.entreprise || '';
+        const prospectName = [prospect.first_name, prospect.last_name].filter(Boolean).join(' ');
+        const prospectCompany = prospect.society || '';
         
         // Only show prospect info if we have at least a name
         const prospectHtml = prospectName ? `
@@ -7923,7 +7950,7 @@ function renderAgentTasks(tasks) {
                     <button class="agent-event-btn agent-event-btn-delete" data-task-id="${task.id}" data-action="delete">
                         <i data-lucide="trash-2"></i>
                     </button>
-                    <button class="agent-event-btn agent-event-btn-confirm ${task.type}" data-task-id="${task.id}" data-action="confirm" data-type="${task.type}">
+                    <button class="agent-event-btn agent-event-btn-confirm ${task.type}" data-task-id="${task.id}" data-prospect-id="${task.prospect_id}" data-action="confirm" data-type="${task.type}">
                         <i data-lucide="${getActionIcon(task.type)}"></i>
                         ${actionText}
                     </button>
@@ -7949,8 +7976,8 @@ function generateTaskForm(task) {
                     <div class="agent-form-group">
                         <label class="agent-form-label">Date et heure d'envoi</label>
                         <div style="display: flex; gap: 0.75rem;">
-                            <input type="date" class="agent-form-input" data-field="scheduled_date" value="${content.scheduled_date ? content.scheduled_date.split('T')[0] : ''}" style="flex: 1;">
-                            <input type="time" class="agent-form-input" data-field="scheduled_time" value="${content.scheduled_time || ''}" style="flex: 1;" step="300">
+                            <input type="date" class="agent-form-input" data-field="send_date" value="${content.send_date || ''}" style="flex: 1;">
+                            <input type="time" class="agent-form-input" data-field="send_time" value="${content.send_time || ''}" style="flex: 1;" step="300">
                         </div>
                     </div>
                     <div class="agent-form-group">
@@ -7963,7 +7990,7 @@ function generateTaskForm(task) {
                     </div>
                     <div class="agent-form-group">
                         <label class="agent-form-label">Contenu</label>
-                        <div class="agent-form-html-editor" contenteditable="true" data-field="content">${content.content || content.body || 'Contenu de l\'email...'}</div>
+                        <div class="agent-form-html-editor" contenteditable="true" data-field="body">${content.body || ''}</div>
                     </div>
                 </div>
             `;
@@ -7974,7 +8001,7 @@ function generateTaskForm(task) {
                     <div class="agent-form-group">
                         <label class="agent-form-label">Date et heure du rappel</label>
                         <div style="display: flex; gap: 0.75rem;">
-                            <input type="date" class="agent-form-input" data-field="remind_date" value="${content.remind_date ? content.remind_date.split('T')[0] : ''}" style="flex: 1;">
+                            <input type="date" class="agent-form-input" data-field="remind_date" value="${content.remind_date ? (typeof content.remind_date === 'string' ? content.remind_date.split('T')[0] : content.remind_date) : ''}" style="flex: 1;">
                             <input type="time" class="agent-form-input" data-field="remind_time" value="${content.remind_time || ''}" style="flex: 1;" step="300">
                         </div>
                     </div>
@@ -7989,6 +8016,13 @@ function generateTaskForm(task) {
             return `
                 <div class="agent-event-form">
                     <div class="agent-form-group">
+                        <label class="agent-form-label">Date et heure d'envoi (immédiat)</label>
+                        <div style="display: flex; gap: 0.75rem;">
+                            <input type="date" class="agent-form-input" data-field="send_date" value="${content.send_date || ''}" style="flex: 1;">
+                            <input type="time" class="agent-form-input" data-field="send_time" value="${content.send_time || ''}" style="flex: 1;" step="300">
+                        </div>
+                    </div>
+                    <div class="agent-form-group">
                         <label class="agent-form-label">Destinataire</label>
                         <input type="email" class="agent-form-input" data-field="recipient" value="${content.recipient || ''}" placeholder="email@example.com">
                     </div>
@@ -7998,7 +8032,7 @@ function generateTaskForm(task) {
                     </div>
                     <div class="agent-form-group">
                         <label class="agent-form-label">Contenu</label>
-                        <div class="agent-form-html-editor" contenteditable="true" data-field="body">${content.body || content.content || 'Contenu de l\'email...'}</div>
+                        <div class="agent-form-html-editor" contenteditable="true" data-field="body">${content.body || ''}</div>
                     </div>
                 </div>
             `;
@@ -8009,7 +8043,7 @@ function generateTaskForm(task) {
                     <div class="agent-form-group">
                         <label class="agent-form-label">Date et heure de la réunion</label>
                         <div style="display: flex; gap: 0.75rem;">
-                            <input type="date" class="agent-form-input" data-field="meeting_date" value="${content.meeting_date ? content.meeting_date.split('T')[0] : ''}" style="flex: 1;">
+                            <input type="date" class="agent-form-input" data-field="meeting_date" value="${content.meeting_date || ''}" style="flex: 1;">
                             <input type="time" class="agent-form-input" data-field="meeting_time" value="${content.meeting_time || ''}" style="flex: 1;" step="300">
                         </div>
                     </div>
@@ -8073,6 +8107,7 @@ function getTaskActionText(type) {
 async function handleAgentEventAction(e) {
     const btn = e.currentTarget;
     const taskId = btn.getAttribute('data-task-id');
+    const prospectId = btn.getAttribute('data-prospect-id');
     const action = btn.getAttribute('data-action');
     const taskType = btn.getAttribute('data-type');
     
