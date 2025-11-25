@@ -8,8 +8,17 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@100;200;300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20251116-10">
-    <link rel="stylesheet" href="mails_styles.css?v=20251116-10">
+
+    <!-- Cache Buster pour forcer le rechargement des fichiers CSS/JS -->
+    <script src="cache-buster.js"></script>
+    <script>
+        // Changez ce numéro de version à chaque mise à jour de vos fichiers
+        CacheBuster.config.version = '1.0.0';
+        CacheBuster.init();
+    </script>
+
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="mails_styles.css">
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -1435,9 +1444,9 @@
         </div>
     </div>
     
-    <script src="script.js?v=20251116-18"></script>
+    <script src="script.js"></script>
 N'a pas décroché
-    <script src="analytics.js?v=20251116-15"></script>
+    <script src="analytics.js"></script>
     <script>
         // Initialize Lucide icons
         lucide.createIcons();

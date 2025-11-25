@@ -1,1302 +1,358 @@
-// Analytics Module for CRM
+// New Analytics Module for CRM
 class AnalyticsManager {
     constructor() {
         this.currentUser = null;
         this.charts = {};
         this.supabase = window.supabaseClient;
-        
-        // Initialize default date range (last 30 days)
-        const today = new Date();
-        const thirtyDaysAgo = new Date(today);
-        thirtyDaysAgo.setDate(today.getDate() - 30);
-        
-        this.currentStartDate = thirtyDaysAgo.toISOString().split('T')[0];
-        this.currentEndDate = today.toISOString().split('T')[0];
-        
+        this.allUsers = [];
+        this.usersStats = new Map();
+
         this.initializeAnalytics();
     }
 
     async initializeAnalytics() {
-        await this.loadUsers();
+        await this.loadAllUsers();
+        await this.loadComparisonChart();
+        await this.loadTeamCards();
         this.setupEventListeners();
         this.hideAnalyticsLoading();
-        await this.loadComparisonTable();
     }
 
-    async loadUsers() {
+    hideAnalyticsLoading() {
+        const loading = document.getElementById('analyticsLoading');
+        const content = document.getElementById('analyticsContent');
+
+        if (loading) loading.style.display = 'none';
+        if (content) content.style.display = 'block';
+    }
+
+    setupEventListeners() {
+        // Close user details modal
+        const closeUserDetailsBtn = document.getElementById('closeUserDetailsModal');
+        const userDetailsModal = document.getElementById('userDetailsModal');
+
+        if (closeUserDetailsBtn) {
+            closeUserDetailsBtn.addEventListener('click', () => {
+                if (userDetailsModal) {
+                    userDetailsModal.classList.remove('active');
+                }
+            });
+        }
+
+        // Close on outside click
+        if (userDetailsModal) {
+            userDetailsModal.addEventListener('click', (e) => {
+                if (e.target === userDetailsModal) {
+                    userDetailsModal.classList.remove('active');
+                }
+            });
+        }
+
+        // Close transcript modal
+        const closeTranscriptBtn = document.getElementById('closeTranscriptModal');
+        const transcriptModal = document.getElementById('transcriptModal');
+
+        if (closeTranscriptBtn) {
+            closeTranscriptBtn.addEventListener('click', () => {
+                if (transcriptModal) {
+                    transcriptModal.classList.remove('active');
+                }
+            });
+        }
+
+        // Close on outside click
+        if (transcriptModal) {
+            transcriptModal.addEventListener('click', (e) => {
+                if (e.target === transcriptModal) {
+                    transcriptModal.classList.remove('active');
+                }
+            });
+        }
+    }
+
+    async loadAllUsers() {
         try {
-            console.log('=== LOADING USERS FOR DROPDOWN ===');
             const { data: users, error } = await this.supabase
                 .from('users')
-                .select('id, first_name, last_name, email')
+                .select('id, first_name, last_name, email, avatar_url, role, mission')
+                .in('role', ['admin', 'BDR'])
                 .order('first_name');
 
-            console.log('Users query result:', { users, error });
+            if (error) throw error;
 
-            if (error) {
-                console.error('Supabase error loading users:', error);
-                throw error;
-            }
+            this.allUsers = users || [];
 
-            const userFilter = document.getElementById('userFilter');
-            console.log('UserFilter element found:', !!userFilter);
-            console.log('Number of users to add:', users?.length || 0);
+            // Load stats for all users
+            const statsPromises = this.allUsers.map(user => this.getUserStats(user.id));
+            const stats = await Promise.all(statsPromises);
 
-            if (userFilter && users) {
-                userFilter.innerHTML = '<option value="">Choisir un utilisateur...</option>';
-                users.forEach((user, index) => {
-                    const fullName = `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.email;
-                    const option = document.createElement('option');
-                    option.value = user.id;
-                    option.textContent = fullName;
-                    userFilter.appendChild(option);
-                    console.log(`Added user ${index + 1}:`, { id: user.id, name: fullName });
-                });
-                console.log('Final dropdown options count:', userFilter.options.length);
-                
-                // Auto-select the first user if available
-                if (users.length > 0) {
-                    userFilter.value = users[0].id;
-                    this.currentUser = users[0].id;
-                    console.log('Auto-selected first user:', users[0].id);
-                    // Load analytics for the selected user
-                    this.loadAnalytics();
-                }
-            } else {
-                console.warn('UserFilter element not found or no users data');
-            }
+            this.allUsers.forEach((user, index) => {
+                this.usersStats.set(user.id, stats[index]);
+            });
+
         } catch (error) {
             console.error('Error loading users:', error);
             showToast('Erreur lors du chargement des utilisateurs', 'error');
         }
     }
 
-    setupEventListeners() {
-        const userFilter = document.getElementById('userFilter');
-        const startDateFilter = document.getElementById('startDateFilter');
-        const endDateFilter = document.getElementById('endDateFilter');
-        const applyFiltersBtn = document.getElementById('applyFilters');
-        const resetFiltersBtn = document.getElementById('resetFilters');
-
-        // Initialize default dates (last 30 days)
-        if (startDateFilter && endDateFilter) {
-            const today = new Date();
-            const thirtyDaysAgo = new Date(today);
-            thirtyDaysAgo.setDate(today.getDate() - 30);
-            
-            endDateFilter.value = today.toISOString().split('T')[0];
-            startDateFilter.value = thirtyDaysAgo.toISOString().split('T')[0];
-            
-            this.currentStartDate = startDateFilter.value;
-            this.currentEndDate = endDateFilter.value;
-        }
-
-        if (userFilter) {
-            userFilter.addEventListener('change', (e) => {
-                this.currentUser = e.target.value;
-                if (this.currentUser) {
-                    this.loadAnalytics();
-                } else {
-                    this.clearAnalytics();
-                }
-            });
-        }
-
-        if (applyFiltersBtn) {
-            applyFiltersBtn.addEventListener('click', () => {
-                this.currentStartDate = startDateFilter.value;
-                this.currentEndDate = endDateFilter.value;
-                
-                if (this.currentUser) {
-                    this.loadAnalytics();
-                }
-                this.loadComparisonTable();
-                this.updateComparisonChart();
-            });
-        }
-
-        if (resetFiltersBtn) {
-            resetFiltersBtn.addEventListener('click', () => {
-                const today = new Date();
-                const thirtyDaysAgo = new Date(today);
-                thirtyDaysAgo.setDate(today.getDate() - 30);
-                
-                endDateFilter.value = today.toISOString().split('T')[0];
-                startDateFilter.value = thirtyDaysAgo.toISOString().split('T')[0];
-                
-                this.currentStartDate = startDateFilter.value;
-                this.currentEndDate = endDateFilter.value;
-                
-                if (this.currentUser) {
-                    this.loadAnalytics();
-                }
-                this.loadComparisonTable();
-                this.updateComparisonChart();
-            });
-        }
-
-        // Comparison table controls
-        const selectAllBtn = document.getElementById('selectAllUsers');
-        const unselectAllBtn = document.getElementById('unselectAllUsers');
-        const selectAllCheckbox = document.getElementById('selectAllCheckbox');
-
-        if (selectAllBtn) {
-            selectAllBtn.addEventListener('click', () => this.selectAllUsers(true));
-        }
-
-        if (unselectAllBtn) {
-            unselectAllBtn.addEventListener('click', () => this.selectAllUsers(false));
-        }
-
-        if (selectAllCheckbox) {
-            selectAllCheckbox.addEventListener('change', (e) => this.selectAllUsers(e.target.checked));
-        }
-
-        // Comparison chart controls
-        const comparisonPeriod = document.getElementById('comparisonPeriod');
-        const toggleComparisonCalls = document.getElementById('toggleComparisonCalls');
-        const toggleComparisonAnswered = document.getElementById('toggleComparisonAnswered');
-        const toggleComparisonMeetings = document.getElementById('toggleComparisonMeetings');
-
-        if (comparisonPeriod) {
-            comparisonPeriod.addEventListener('change', () => this.updateComparisonChart());
-        }
-
-        if (toggleComparisonCalls) {
-            toggleComparisonCalls.addEventListener('change', () => this.updateComparisonChart());
-        }
-
-        if (toggleComparisonAnswered) {
-            toggleComparisonAnswered.addEventListener('change', () => this.updateComparisonChart());
-        }
-
-        if (toggleComparisonMeetings) {
-            toggleComparisonMeetings.addEventListener('change', () => this.updateComparisonChart());
-        }
-
-        // Call Activity period selector
-        const callActivityPeriod = document.getElementById('callActivityPeriod');
-        if (callActivityPeriod) {
-            callActivityPeriod.addEventListener('change', () => this.loadCallActivity());
-        }
-
-        // Date shortcut buttons
-        const dateShortcutButtons = document.querySelectorAll('.date-shortcut-btn');
-        dateShortcutButtons.forEach(btn => {
-            btn.addEventListener('click', () => {
-                const days = parseInt(btn.getAttribute('data-days'));
-                const today = new Date();
-                const startDate = new Date(today);
-                startDate.setDate(today.getDate() - days + 1); // +1 to include today
-                
-                // Update date inputs
-                startDateFilter.value = startDate.toISOString().split('T')[0];
-                endDateFilter.value = today.toISOString().split('T')[0];
-                
-                // Update current dates
-                this.currentStartDate = startDateFilter.value;
-                this.currentEndDate = endDateFilter.value;
-                
-                // Update active state
-                dateShortcutButtons.forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                
-                // Reload data
-                if (this.currentUser) {
-                    this.loadAnalytics();
-                }
-                this.loadComparisonTable();
-                this.updateComparisonChart();
-            });
-        });
-    }
-
-    hideAnalyticsLoading() {
-        const loading = document.getElementById('analyticsLoading');
-        const content = document.getElementById('analyticsContent');
-        
-        if (loading) loading.style.display = 'none';
-        if (content) content.style.display = 'block';
-    }
-
-    clearAnalytics() {
-        // Clear all KPI values
-        const kpiElements = [
-            'newProspectsCount', 'qualificationRate', 'rdvConversionRate', 'clientConversionRate', 'avgConversionTime',
-            'callsCount', 'avgCallDuration', 'positiveCallsRate', 'avgTemperature',
-            'assignedProspects', 'bookedRdv', 'totalCallsMade', 'globalConversionRate', 'followUpRate',
-            'totalEvents', 'linkedEventsRate', 'busyDaysCount',
-            'avgFirstCallDelay', 'prospectsWithoutCall', 'prospectsWithoutStatus', 'activeArchivedRatio',
-            'leadSources', 'bestSourceConversion', 'avgTempBySource'
-        ];
-
-        kpiElements.forEach(id => {
-            const element = document.getElementById(id);
-            if (element) element.textContent = '0';
-        });
-
-        // Clear charts
-        Object.values(this.charts).forEach(chart => {
-            if (chart) chart.destroy();
-        });
-        this.charts = {};
-    }
-
-    async loadAnalytics() {
-        if (!this.currentUser) return;
-
+    async getUserStats(userId) {
         try {
-            // Show loading state
-            this.showLoadingState();
-
-            // Load all analytics data
-            await Promise.all([
-                this.loadPipelineConversions(),
-                this.loadCallActivity(),
-                this.loadIndividualPerformance(),
-                this.loadAgendaWorkload(),
-                this.loadReactivityHygiene(),
-                this.loadLeadQuality()
-            ]);
-
-            this.hideLoadingState();
-        } catch (error) {
-            console.error('Error loading analytics:', error);
-            showToast('Erreur lors du chargement des analytics', 'error');
-            this.hideLoadingState();
-        }
-    }
-
-    showLoadingState() {
-        // You can add loading indicators here if needed
-    }
-
-    hideLoadingState() {
-        // Hide loading indicators
-    }
-
-    getDateFilter() {
-        if (!this.currentStartDate || !this.currentEndDate) {
-            return { start: null, end: null };
-        }
-        
-        // Convert dates to ISO strings for database queries
-        const startDate = new Date(this.currentStartDate + 'T00:00:00');
-        const endDate = new Date(this.currentEndDate + 'T23:59:59');
-        
-        return {
-            start: startDate.toISOString(),
-            end: endDate.toISOString()
-        };
-    }
-
-    applyDateFilter(query, dateFilter, dateColumn = 'created_at') {
-        if (dateFilter.start && dateFilter.end) {
-            return query.gte(dateColumn, dateFilter.start).lte(dateColumn, dateFilter.end);
-        }
-        return query;
-    }
-
-    // Section 1: Pipeline & Conversions
-    async loadPipelineConversions() {
-        try {
-            const dateFilter = this.getDateFilter();
-            let query = this.supabase
-                .from('crm_prospects')
-                .select('*')
-                .eq('user_id', this.currentUser);
-
-            query = this.applyDateFilter(query, dateFilter, 'created_at');
-
-            const { data: prospects, error } = await query;
-            if (error) throw error;
-
-            // Calculate KPIs
-            const newProspects = prospects.length;
-            const qualifiedProspects = prospects.filter(p => p.pipeline_status && p.pipeline_status !== '').length;
-            const bookedProspects = prospects.filter(p => p.booked === true).length;
-            const convertedProspects = prospects.filter(p => p.conversion_date).length;
-            
-            // Calculate rates
-            const qualificationRate = newProspects > 0 ? Math.round((qualifiedProspects / newProspects) * 100) : 0;
-            const rdvConversionRate = newProspects > 0 ? Math.round((bookedProspects / newProspects) * 100) : 0;
-            const clientConversionRate = newProspects > 0 ? Math.round((convertedProspects / newProspects) * 100) : 0;
-
-            // Calculate average conversion time
-            const convertedWithTime = prospects.filter(p => p.conversion_date && p.created_at);
-            let avgConversionTime = 0;
-            if (convertedWithTime.length > 0) {
-                const totalDays = convertedWithTime.reduce((sum, p) => {
-                    const created = new Date(p.created_at);
-                    const converted = new Date(p.conversion_date);
-                    const diffDays = Math.ceil((converted - created) / (1000 * 60 * 60 * 24));
-                    return sum + diffDays;
-                }, 0);
-                avgConversionTime = Math.round(totalDays / convertedWithTime.length);
-            }
-
-            // Update UI
-            document.getElementById('newProspectsCount').textContent = newProspects;
-            document.getElementById('qualificationRate').textContent = `${qualificationRate}%`;
-            document.getElementById('rdvConversionRate').textContent = `${rdvConversionRate}%`;
-            document.getElementById('clientConversionRate').textContent = `${clientConversionRate}%`;
-            document.getElementById('avgConversionTime').textContent = `${avgConversionTime}j`;
-
-            // Create funnel chart
-            this.createConversionFunnelChart(newProspects, qualifiedProspects, bookedProspects, convertedProspects);
-            
-            // Create new prospects timeline chart
-            this.createNewProspectsChart(prospects);
-
-        } catch (error) {
-            console.error('Error loading pipeline conversions:', error);
-        }
-    }
-
-    // Section 2: Call Activity
-    async loadCallActivity() {
-        try {
-            // Get period selection
-            const periodSelect = document.getElementById('callActivityPeriod');
-            const period = periodSelect?.value || '30';
-            
-            // Calculate date filter based on period
-            let dateFilter = { start: null, end: null };
-            if (period !== 'all') {
-                const daysAgo = parseInt(period);
-                const endDate = new Date();
-                const startDate = new Date();
-                // Correction : inclure la journée en cours (+1)
-                startDate.setDate(endDate.getDate() - daysAgo + 1);
-                
-                dateFilter = {
-                    start: startDate.toISOString(),
-                    end: endDate.toISOString()
-                };
-            }
-            
-            let query = this.supabase
-                .from('crm_calls')
-                .select('*')
-                .eq('user_id', this.currentUser);
-
-            query = this.applyDateFilter(query, dateFilter, 'date');
-
-            const { data: calls, error } = await query;
-            if (error) throw error;
-
-            // Calculate KPIs
-            const totalCalls = calls.length;
-            const totalDuration = calls.reduce((sum, call) => sum + (call.duration || 0), 0);
-            const avgDuration = totalCalls > 0 ? Math.round(totalDuration / totalCalls / 60) : 0; // Convert to minutes
-            
-            const positiveCalls = calls.filter(call => 
-                call.status && ['intéressé', 'à rappeler', 'rdv_pris'].includes(call.status.toLowerCase())
-            ).length;
-            const positiveRate = totalCalls > 0 ? Math.round((positiveCalls / totalCalls) * 100) : 0;
-            
-            const avgTemperature = calls.length > 0 ? 
-                Math.round(calls.reduce((sum, call) => sum + (call.temperature || 0), 0) / calls.length) : 0;
-
-            // Update UI - with null checks
-            const callsCountEl = document.getElementById('callsCount');
-            const avgCallDurationEl = document.getElementById('avgCallDuration');
-            const positiveCallsRateEl = document.getElementById('positiveCallsRate');
-            const avgTemperatureEl = document.getElementById('avgTemperature');
-            
-            if (callsCountEl) callsCountEl.textContent = totalCalls;
-            if (avgCallDurationEl) avgCallDurationEl.textContent = `${avgDuration}min`;
-            if (positiveCallsRateEl) positiveCallsRateEl.textContent = `${positiveRate}%`;
-            if (avgTemperatureEl) avgTemperatureEl.textContent = avgTemperature;
-
-            // Create charts
-            this.createCallsPerDayChart(calls);
-            this.createTemperatureDistributionChart(calls);
-
-        } catch (error) {
-            console.error('Error loading call activity:', error);
-        }
-    }
-
-    // Section 3: Individual Performance
-    async loadIndividualPerformance() {
-        try {
-            const dateFilter = this.getDateFilter();
-            
-            // Get prospects assigned to user
-            let prospectsQuery = this.supabase
-                .from('crm_prospects')
-                .select('*')
-                .eq('user_id', this.currentUser);
-
-            prospectsQuery = this.applyDateFilter(prospectsQuery, dateFilter, 'created_at');
-
-            const { data: prospects, error: prospectsError } = await prospectsQuery;
-            if (prospectsError) throw prospectsError;
-
-            // Get calls made by user
-            let callsQuery = this.supabase
-                .from('crm_calls')
-                .select('*')
-                .eq('user_id', this.currentUser);
-
-            callsQuery = this.applyDateFilter(callsQuery, dateFilter, 'date');
-
-            const { data: calls, error: callsError } = await callsQuery;
-            if (callsError) throw callsError;
-
-            // Calculate KPIs
-            const assignedProspects = prospects.length;
-            const bookedRdv = prospects.filter(p => p.booked === true).length;
-            const totalCallsMade = calls.length;
-            const convertedProspects = prospects.filter(p => p.conversion_date).length;
-            const globalConversionRate = assignedProspects > 0 ? Math.round((convertedProspects / assignedProspects) * 100) : 0;
-            
-            const contactedProspects = prospects.filter(p => p.called === true).length;
-            const followUpRate = assignedProspects > 0 ? Math.round((contactedProspects / assignedProspects) * 100) : 0;
-
-            // Update UI
-            document.getElementById('assignedProspects').textContent = assignedProspects;
-            document.getElementById('bookedRdv').textContent = bookedRdv;
-            document.getElementById('totalCallsMade').textContent = totalCallsMade;
-            document.getElementById('globalConversionRate').textContent = `${globalConversionRate}%`;
-            document.getElementById('followUpRate').textContent = `${followUpRate}%`;
-
-        } catch (error) {
-            console.error('Error loading individual performance:', error);
-        }
-    }
-
-    // Section 4: Agenda & Workload
-    async loadAgendaWorkload() {
-        try {
-            const dateFilter = this.getDateFilter();
-            let query = this.supabase
-                .from('crm_calendars')
-                .select('*')
-                .eq('user_id', this.currentUser);
-
-            query = this.applyDateFilter(query, dateFilter, 'start');
-
-            const { data: events, error } = await query;
-            if (error) throw error;
-
-            // Calculate KPIs
-            const totalEvents = events.length;
-            const linkedEvents = events.filter(e => e.linked_prospect_id).length;
-            const linkedEventsRate = totalEvents > 0 ? Math.round((linkedEvents / totalEvents) * 100) : 0;
-            
-            // Calculate busy days (days with more than 3 events)
-            const eventsByDay = {};
-            events.forEach(event => {
-                const day = event.start.split('T')[0];
-                eventsByDay[day] = (eventsByDay[day] || 0) + 1;
-            });
-            const busyDaysCount = Object.values(eventsByDay).filter(count => count > 3).length;
-
-            // Update UI - with null checks
-            const totalEventsEl = document.getElementById('totalEvents');
-            const linkedEventsRateEl = document.getElementById('linkedEventsRate');
-            const busyDaysCountEl = document.getElementById('busyDaysCount');
-            
-            if (totalEventsEl) totalEventsEl.textContent = totalEvents;
-            if (linkedEventsRateEl) linkedEventsRateEl.textContent = `${linkedEventsRate}%`;
-            if (busyDaysCountEl) busyDaysCountEl.textContent = busyDaysCount;
-
-            // Create charts
-            this.createWorkloadHeatmapChart(eventsByDay);
-            this.createEventTypesChart(events);
-
-        } catch (error) {
-            console.error('Error loading agenda workload:', error);
-        }
-    }
-
-    // Section 5: Reactivity & Hygiene
-    async loadReactivityHygiene() {
-        try {
-            const dateFilter = this.getDateFilter();
-            
             // Get prospects
-            let prospectsQuery = this.supabase
+            const { data: prospects, error: prospectsError } = await this.supabase
                 .from('crm_prospects')
                 .select('*')
-                .eq('user_id', this.currentUser);
+                .eq('user_id', userId);
 
-            prospectsQuery = this.applyDateFilter(prospectsQuery, dateFilter, 'created_at');
-
-            const { data: prospects, error: prospectsError } = await prospectsQuery;
             if (prospectsError) throw prospectsError;
 
             // Get calls
             const { data: calls, error: callsError } = await this.supabase
                 .from('crm_calls')
                 .select('*')
-                .eq('user_id', this.currentUser);
+                .eq('user_id', userId);
 
             if (callsError) throw callsError;
 
-            // Calculate first call delays
-            const firstCallDelays = [];
-            prospects.forEach(prospect => {
-                const prospectCalls = calls.filter(call => call.prospect_id === prospect.id);
-                if (prospectCalls.length > 0) {
-                    const firstCall = prospectCalls.sort((a, b) => new Date(a.date) - new Date(b.date))[0];
-                    const createdAt = new Date(prospect.created_at);
-                    const firstCallDate = new Date(firstCall.date);
-                    const delayHours = Math.ceil((firstCallDate - createdAt) / (1000 * 60 * 60));
-                    firstCallDelays.push(delayHours);
-                }
-            });
+            // Calculate stats
+            const totalProspects = prospects?.length || 0;
+            const totalCalls = calls?.length || 0;
+            const bookedProspects = prospects?.filter(p => p.booked === true).length || 0;
+            const convertedProspects = prospects?.filter(p => p.conversion_date).length || 0;
 
-            const avgFirstCallDelay = firstCallDelays.length > 0 ? 
-                Math.round(firstCallDelays.reduce((sum, delay) => sum + delay, 0) / firstCallDelays.length) : 0;
+            const avgTemperature = calls && calls.length > 0 ?
+                Math.round(calls.reduce((sum, call) => sum + (call.temperature || 0), 0) / calls.length) : 0;
 
-            // Prospects without call after 7 days
-            const sevenDaysAgo = new Date();
-            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-            const prospectsWithoutCall = prospects.filter(p => {
-                const hasCall = calls.some(call => call.prospect_id === p.id);
-                const isOld = new Date(p.created_at) < sevenDaysAgo;
-                return !hasCall && isOld;
-            }).length;
+            const rdvRate = totalProspects > 0 ? Math.round((bookedProspects / totalProspects) * 100) : 0;
+            const conversionRate = totalProspects > 0 ? Math.round((convertedProspects / totalProspects) * 100) : 0;
 
-            // Prospects without pipeline status
-            const prospectsWithoutStatus = prospects.filter(p => !p.pipeline_status || p.pipeline_status === '').length;
+            // Calculate average BDR performance score
+            const callsWithPerformance = calls?.filter(c => c.bdr_performance && c.bdr_performance.overall_score) || [];
+            const avgBdrScore = callsWithPerformance.length > 0 ?
+                (callsWithPerformance.reduce((sum, call) => sum + (call.bdr_performance.overall_score || 0), 0) / callsWithPerformance.length).toFixed(1) : 0;
 
-            // Active/Archived ratio
-            const activeProspects = prospects.filter(p => !p.archived).length;
-            const archivedProspects = prospects.filter(p => p.archived).length;
-            const activeArchivedRatio = (activeProspects + archivedProspects) > 0 ? 
-                Math.round((activeProspects / (activeProspects + archivedProspects)) * 100) : 0;
-
-            // Update UI
-            const avgFirstCallDelayEl = document.getElementById('avgFirstCallDelay');
-            const prospectsWithoutCallEl = document.getElementById('prospectsWithoutCall');
-            const prospectsWithoutStatusEl = document.getElementById('prospectsWithoutStatus');
-            const activeArchivedRatioEl = document.getElementById('activeArchivedRatio');
-            
-            if (avgFirstCallDelayEl) avgFirstCallDelayEl.textContent = `${avgFirstCallDelay}h`;
-            if (prospectsWithoutCallEl) prospectsWithoutCallEl.textContent = prospectsWithoutCall;
-            if (prospectsWithoutStatusEl) prospectsWithoutStatusEl.textContent = prospectsWithoutStatus;
-            if (activeArchivedRatioEl) activeArchivedRatioEl.textContent = `${activeArchivedRatio}%`;
-
-            // Create first call delay chart
-            this.createFirstCallDelayChart(firstCallDelays);
-
+            return {
+                totalProspects,
+                totalCalls,
+                bookedProspects,
+                convertedProspects,
+                avgTemperature,
+                rdvRate,
+                conversionRate,
+                avgBdrScore,
+                prospects,
+                calls
+            };
         } catch (error) {
-            console.error('Error loading reactivity hygiene:', error);
+            console.error(`Error getting stats for user ${userId}:`, error);
+            return {
+                totalProspects: 0,
+                totalCalls: 0,
+                bookedProspects: 0,
+                convertedProspects: 0,
+                avgTemperature: 0,
+                rdvRate: 0,
+                conversionRate: 0,
+                avgBdrScore: 0,
+                prospects: [],
+                calls: []
+            };
         }
     }
 
-    // Section 6: Lead Quality
-    async loadLeadQuality() {
-        try {
-            const dateFilter = this.getDateFilter();
-            let query = this.supabase
-                .from('crm_prospects')
-                .select('*')
-                .eq('user_id', this.currentUser);
-
-            query = this.applyDateFilter(query, dateFilter, 'created_at');
-
-            const { data: prospects, error } = await query;
-            if (error) throw error;
-
-            // Group by society/segment for analysis
-            const segmentStats = {};
-            prospects.forEach(prospect => {
-                const segment = prospect.society || 'Non renseigné';
-                if (!segmentStats[segment]) {
-                    segmentStats[segment] = {
-                        total: 0,
-                        converted: 0,
-                        totalTemperature: 0,
-                        count: 0
-                    };
-                }
-                segmentStats[segment].total++;
-                if (prospect.conversion_date) segmentStats[segment].converted++;
-                if (prospect.temperature) {
-                    segmentStats[segment].totalTemperature += prospect.temperature;
-                    segmentStats[segment].count++;
-                }
-            });
-
-            const leadSources = Object.keys(segmentStats).length;
-            
-            // Find best conversion rate
-            let bestConversionRate = 0;
-            Object.values(segmentStats).forEach(stats => {
-                const rate = stats.total > 0 ? (stats.converted / stats.total) * 100 : 0;
-                if (rate > bestConversionRate) bestConversionRate = rate;
-            });
-
-            // Calculate average temperature across all segments
-            const avgTempBySource = prospects.length > 0 ? 
-                Math.round(prospects.reduce((sum, p) => sum + (p.temperature || 0), 0) / prospects.length) : 0;
-
-            // Update UI - with null checks
-            const leadSourcesEl = document.getElementById('leadSources');
-            const bestSourceConversionEl = document.getElementById('bestSourceConversion');
-            const avgTempBySourceEl = document.getElementById('avgTempBySource');
-            
-            if (leadSourcesEl) leadSourcesEl.textContent = leadSources;
-            if (bestSourceConversionEl) bestSourceConversionEl.textContent = `${Math.round(bestConversionRate)}%`;
-            if (avgTempBySourceEl) avgTempBySourceEl.textContent = avgTempBySource;
-
-            // Create charts
-            this.createSegmentDistributionChart(segmentStats);
-            this.createConversionBySegmentChart(segmentStats);
-
-        } catch (error) {
-            console.error('Error loading lead quality:', error);
-        }
-    }
-
-    // Chart creation methods
-    createConversionFunnelChart(total, qualified, booked, converted) {
-        const ctx = document.getElementById('conversionFunnelChart');
+    async loadComparisonChart() {
+        const ctx = document.getElementById('comparisonChart');
         if (!ctx) return;
 
-        if (this.charts.conversionFunnel) {
-            this.charts.conversionFunnel.destroy();
+        // Destroy existing chart
+        if (this.charts.comparison) {
+            this.charts.comparison.destroy();
         }
 
-        this.charts.conversionFunnel = new Chart(ctx, {
+        // Prepare data
+        const labels = this.allUsers.map(user => `${user.first_name} ${user.last_name}`);
+        const callsData = this.allUsers.map(user => {
+            const stats = this.usersStats.get(user.id);
+            return stats?.totalCalls || 0;
+        });
+        const rdvData = this.allUsers.map(user => {
+            const stats = this.usersStats.get(user.id);
+            return stats?.bookedProspects || 0;
+        });
+        const conversionData = this.allUsers.map(user => {
+            const stats = this.usersStats.get(user.id);
+            return stats?.conversionRate || 0;
+        });
+
+        this.charts.comparison = new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: ['Prospects', 'Qualifiés', 'RDV', 'Clients'],
-                datasets: [{
-                    label: 'Nombre',
-                    data: [total, qualified, booked, converted],
-                    backgroundColor: [
-                        'rgba(0, 110, 255, 0.8)',
-                        'rgba(95, 161, 255, 0.8)',
-                        'rgba(0, 110, 255, 0.6)',
-                        'rgba(95, 161, 255, 0.6)'
-                    ],
-                    borderColor: [
-                        'rgba(0, 110, 255, 1)',
-                        'rgba(95, 161, 255, 1)',
-                        'rgba(0, 110, 255, 1)',
-                        'rgba(95, 161, 255, 1)'
-                    ],
-                    borderWidth: 1
-                }]
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Appels',
+                        data: callsData,
+                        backgroundColor: 'rgba(0, 110, 255, 0.8)',
+                        borderColor: 'rgba(0, 110, 255, 1)',
+                        borderWidth: 1,
+                        yAxisID: 'y'
+                    },
+                    {
+                        label: 'RDV bookés',
+                        data: rdvData,
+                        backgroundColor: 'rgba(16, 185, 129, 0.8)',
+                        borderColor: 'rgba(16, 185, 129, 1)',
+                        borderWidth: 1,
+                        yAxisID: 'y'
+                    },
+                    {
+                        label: 'Taux de conversion (%)',
+                        data: conversionData,
+                        type: 'line',
+                        backgroundColor: 'rgba(245, 158, 11, 0.2)',
+                        borderColor: 'rgba(245, 158, 11, 1)',
+                        borderWidth: 2,
+                        yAxisID: 'y1',
+                        tension: 0.4
+                    }
+                ]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
                 plugins: {
                     legend: {
-                        display: false
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: {
-                            stepSize: 1
-                        }
-                    }
-                }
-            }
-        });
-    }
-
-    createNewProspectsChart(prospects) {
-        const ctx = document.getElementById('newProspectsChart');
-        if (!ctx) return;
-
-        if (this.charts.newProspects) {
-            this.charts.newProspects.destroy();
-        }
-
-        // Group prospects by day
-        const prospectsByDay = {};
-        prospects.forEach(prospect => {
-            const day = prospect.created_at.split('T')[0];
-            prospectsByDay[day] = (prospectsByDay[day] || 0) + 1;
-        });
-
-        const sortedDates = Object.keys(prospectsByDay).sort();
-        const data = sortedDates.map(date => prospectsByDay[date]);
-
-        this.charts.newProspects = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: sortedDates.map(date => new Date(date).toLocaleDateString('fr-FR')),
-                datasets: [{
-                    label: 'Nouveaux prospects',
-                    data: data,
-                    borderColor: 'rgba(0, 110, 255, 1)',
-                    backgroundColor: 'rgba(0, 110, 255, 0.1)',
-                    tension: 0.1,
-                    fill: true
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        display: false
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: {
-                            stepSize: 1
-                        }
-                    }
-                }
-            }
-        });
-    }
-
-    createCallsPerDayChart(calls) {
-        const ctx = document.getElementById('callsPerDayChart');
-        if (!ctx) return;
-
-        if (this.charts.callsPerDay) {
-            this.charts.callsPerDay.destroy();
-        }
-
-        // Group calls by day
-        const callsByDay = {};
-        calls.forEach(call => {
-            const day = call.date.split('T')[0];
-            callsByDay[day] = (callsByDay[day] || 0) + 1;
-        });
-
-        const sortedDates = Object.keys(callsByDay).sort();
-        const data = sortedDates.map(date => callsByDay[date]);
-
-        this.charts.callsPerDay = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: sortedDates.map(date => new Date(date).toLocaleDateString('fr-FR')),
-                datasets: [{
-                    label: 'Appels par jour',
-                    data: data,
-                    backgroundColor: 'rgba(0, 110, 255, 0.8)',
-                    borderColor: 'rgba(0, 110, 255, 1)',
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        display: false
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: {
-                            stepSize: 1
-                        }
-                    }
-                }
-            }
-        });
-    }
-
-    createTemperatureDistributionChart(calls) {
-        const ctx = document.getElementById('temperatureDistributionChart');
-        if (!ctx) return;
-
-        if (this.charts.temperatureDistribution) {
-            this.charts.temperatureDistribution.destroy();
-        }
-
-        // Group calls by temperature ranges
-        const tempRanges = {
-            'Froid (1-20)': 0,
-            'Tiède (21-40)': 0,
-            'Chaud (41-60)': 0,
-            'Très chaud (61-80)': 0,
-            'Brûlant (81-100)': 0
-        };
-
-        calls.forEach(call => {
-            const temp = call.temperature || 0;
-            if (temp <= 20) tempRanges['Froid (1-20)']++;
-            else if (temp <= 40) tempRanges['Tiède (21-40)']++;
-            else if (temp <= 60) tempRanges['Chaud (41-60)']++;
-            else if (temp <= 80) tempRanges['Très chaud (61-80)']++;
-            else tempRanges['Brûlant (81-100)']++;
-        });
-
-        this.charts.temperatureDistribution = new Chart(ctx, {
-            type: 'doughnut',
-            data: {
-                labels: Object.keys(tempRanges),
-                datasets: [{
-                    data: Object.values(tempRanges),
-                    backgroundColor: [
-                        'rgba(59, 130, 246, 0.8)',
-                        'rgba(16, 185, 129, 0.8)',
-                        'rgba(245, 158, 11, 0.8)',
-                        'rgba(239, 68, 68, 0.8)',
-                        'rgba(147, 51, 234, 0.8)'
-                    ]
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false
-            }
-        });
-    }
-
-    createWorkloadHeatmapChart(eventsByDay) {
-        const ctx = document.getElementById('workloadHeatmapChart');
-        if (!ctx) return;
-
-        if (this.charts.workloadHeatmap) {
-            this.charts.workloadHeatmap.destroy();
-        }
-
-        const sortedDates = Object.keys(eventsByDay).sort();
-        const data = sortedDates.map(date => eventsByDay[date]);
-
-        this.charts.workloadHeatmap = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: sortedDates.map(date => new Date(date).toLocaleDateString('fr-FR')),
-                datasets: [{
-                    label: 'Événements par jour',
-                    data: data,
-                    backgroundColor: data.map(count => 
-                        count > 5 ? 'rgba(239, 68, 68, 0.8)' :
-                        count > 3 ? 'rgba(245, 158, 11, 0.8)' :
-                        'rgba(0, 110, 255, 0.8)'
-                    ),
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        display: false
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: {
-                            stepSize: 1
-                        }
-                    }
-                }
-            }
-        });
-    }
-
-    createEventTypesChart(events) {
-        const ctx = document.getElementById('eventTypesChart');
-        if (!ctx) return;
-
-        if (this.charts.eventTypes) {
-            this.charts.eventTypes.destroy();
-        }
-
-        // Group events by type
-        const typeStats = {};
-        events.forEach(event => {
-            const type = event.type || 'Non défini';
-            typeStats[type] = (typeStats[type] || 0) + 1;
-        });
-
-        this.charts.eventTypes = new Chart(ctx, {
-            type: 'pie',
-            data: {
-                labels: Object.keys(typeStats),
-                datasets: [{
-                    data: Object.values(typeStats),
-                    backgroundColor: [
-                        'rgba(0, 110, 255, 0.8)',
-                        'rgba(95, 161, 255, 0.8)',
-                        'rgba(16, 185, 129, 0.8)',
-                        'rgba(245, 158, 11, 0.8)',
-                        'rgba(239, 68, 68, 0.8)'
-                    ]
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false
-            }
-        });
-    }
-
-    createFirstCallDelayChart(delays) {
-        const ctx = document.getElementById('firstCallDelayChart');
-        if (!ctx) return;
-
-        if (this.charts.firstCallDelay) {
-            this.charts.firstCallDelay.destroy();
-        }
-
-        // Group delays into ranges
-        const delayRanges = {
-            '0-4h': 0,
-            '4-24h': 0,
-            '1-3j': 0,
-            '3-7j': 0,
-            '+7j': 0
-        };
-
-        delays.forEach(delay => {
-            if (delay <= 4) delayRanges['0-4h']++;
-            else if (delay <= 24) delayRanges['4-24h']++;
-            else if (delay <= 72) delayRanges['1-3j']++;
-            else if (delay <= 168) delayRanges['3-7j']++;
-            else delayRanges['+7j']++;
-        });
-
-        this.charts.firstCallDelay = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: Object.keys(delayRanges),
-                datasets: [{
-                    label: 'Nombre de prospects',
-                    data: Object.values(delayRanges),
-                    backgroundColor: Object.keys(delayRanges).map((_, i) => 
-                        i === 0 ? 'rgba(16, 185, 129, 0.8)' : // Green for quick response
-                        i === 1 ? 'rgba(0, 110, 255, 0.8)' : // Blue for good response
-                        i === 2 ? 'rgba(245, 158, 11, 0.8)' : // Yellow for average
-                        i === 3 ? 'rgba(249, 115, 22, 0.8)' : // Orange for slow
-                        'rgba(239, 68, 68, 0.8)' // Red for very slow
-                    ),
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        display: false
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: {
-                            stepSize: 1
-                        }
-                    }
-                }
-            }
-        });
-    }
-
-    createSegmentDistributionChart(segmentStats) {
-        const ctx = document.getElementById('segmentDistributionChart');
-        if (!ctx) return;
-
-        if (this.charts.segmentDistribution) {
-            this.charts.segmentDistribution.destroy();
-        }
-
-        const segments = Object.keys(segmentStats).slice(0, 10); // Top 10 segments
-        const data = segments.map(segment => segmentStats[segment].total);
-
-        this.charts.segmentDistribution = new Chart(ctx, {
-            type: 'doughnut',
-            data: {
-                labels: segments,
-                datasets: [{
-                    data: data,
-                    backgroundColor: [
-                        'rgba(0, 110, 255, 0.8)',
-                        'rgba(95, 161, 255, 0.8)',
-                        'rgba(16, 185, 129, 0.8)',
-                        'rgba(245, 158, 11, 0.8)',
-                        'rgba(239, 68, 68, 0.8)',
-                        'rgba(147, 51, 234, 0.8)',
-                        'rgba(236, 72, 153, 0.8)',
-                        'rgba(34, 197, 94, 0.8)',
-                        'rgba(251, 191, 36, 0.8)',
-                        'rgba(168, 85, 247, 0.8)'
-                    ]
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false
-            }
-        });
-    }
-
-    createConversionBySegmentChart(segmentStats) {
-        const ctx = document.getElementById('conversionBySegmentChart');
-        if (!ctx) return;
-
-        if (this.charts.conversionBySegment) {
-            this.charts.conversionBySegment.destroy();
-        }
-
-        const segments = Object.keys(segmentStats).slice(0, 10); // Top 10 segments
-        const conversionRates = segments.map(segment => {
-            const stats = segmentStats[segment];
-            return stats.total > 0 ? Math.round((stats.converted / stats.total) * 100) : 0;
-        });
-
-        this.charts.conversionBySegment = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: segments.map(s => s.length > 15 ? s.substring(0, 15) + '...' : s),
-                datasets: [{
-                    label: 'Taux de conversion (%)',
-                    data: conversionRates,
-                    backgroundColor: 'rgba(0, 110, 255, 0.8)',
-                    borderColor: 'rgba(0, 110, 255, 1)',
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        display: false
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        max: 100,
-                        ticks: {
-                            callback: function(value) {
-                                return value + '%';
+                        position: 'top'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) {
+                                    label += ': ';
+                                }
+                                label += context.parsed.y;
+                                if (context.dataset.yAxisID === 'y1') {
+                                    label += '%';
+                                }
+                                return label;
                             }
                         }
                     }
+                },
+                scales: {
+                    y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Nombre'
+                        },
+                        ticks: {
+                            stepSize: 1
+                        }
+                    },
+                    y1: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        beginAtZero: true,
+                        max: 100,
+                        title: {
+                            display: true,
+                            text: 'Taux de conversion (%)'
+                        },
+                        grid: {
+                            drawOnChartArea: false
+                        }
+                    }
                 }
             }
         });
     }
 
-    // Comparison Table Methods
-    async loadComparisonTable() {
-        try {
-            const loading = document.getElementById('comparisonLoading');
-            const tableBody = document.getElementById('comparisonTableBody');
-            
-            if (loading) loading.style.display = 'flex';
-            
-            // Get all users
-            const { data: users, error: usersError } = await this.supabase
-                .from('users')
-                .select('id, first_name, last_name, email, avatar_url, role')
-                .order('first_name');
+    async loadTeamCards() {
+        const grid = document.getElementById('teamCardsGrid');
+        if (!grid) return;
 
-            if (usersError) throw usersError;
-
-            if (!users || users.length === 0) {
-                if (tableBody) {
-                    tableBody.innerHTML = `
-                        <tr>
-                            <td colspan="8" class="comparison-empty">
-                                <i data-lucide="users"></i>
-                                <p>Aucun utilisateur trouvé</p>
-                            </td>
-                        </tr>
-                    `;
-                }
-                if (loading) loading.style.display = 'none';
-                return;
-            }
-
-            // Get date filter
-            const dateFilter = this.getDateFilter();
-
-            // Get data for all users in parallel
-            const userPromises = users.map(user => this.getUserComparisonData(user.id, dateFilter));
-            const userStats = await Promise.all(userPromises);
-
-            // Build table rows
-            const rows = users.map((user, index) => {
-                const stats = userStats[index];
-                const fullName = `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.email;
-                const initials = this.getInitials(user.first_name, user.last_name);
-                const performance = this.calculatePerformanceLevel(stats);
-                
-                // Cocher par défaut si le rôle est BDR
-                const isChecked = user.role === 'BDR' ? 'checked' : '';
-
-                return `
-                    <tr data-user-id="${user.id}" ${isChecked ? 'class="selected"' : ''}>
-                        <td class="comparison-checkbox-col">
-                            <input type="checkbox" class="user-checkbox" data-user-id="${user.id}" ${isChecked}>
-                        </td>
-                        <td>
-                            <div class="comparison-user-info">
-                                <div class="comparison-user-avatar">
-                                    ${initials}
-                                </div>
-                                <div class="comparison-user-details">
-                                    <div class="comparison-user-name">${fullName}</div>
-                                    <div class="comparison-user-email">${user.email}</div>
-                                </div>
-                            </div>
-                        </td>
-                        <td>
-                            <div class="comparison-metric">
-                                <div class="comparison-metric-value">${stats.totalCalls}</div>
-                                <div class="comparison-metric-label">appels</div>
-                            </div>
-                        </td>
-                        <td>
-                            <div class="comparison-metric">
-                                <div class="comparison-metric-value">${stats.avgTemperature}</div>
-                                <div class="comparison-metric-label">moyenne</div>
-                            </div>
-                        </td>
-                        <td>
-                            <div class="comparison-metric">
-                                <div class="comparison-metric-value">${stats.responseRate}%</div>
-                                <div class="comparison-metric-label">réponses</div>
-                            </div>
-                        </td>
-                        <td>
-                            <div class="comparison-metric">
-                                <div class="comparison-metric-value">${stats.rdvRate}%</div>
-                                <div class="comparison-metric-label">RDV</div>
-                            </div>
-                        </td>
-                        <td>
-                            <div class="comparison-metric">
-                                <div class="comparison-metric-value">${stats.totalProspects}</div>
-                                <div class="comparison-metric-label">prospects</div>
-                            </div>
-                        </td>
-                        <td>
-                            <span class="comparison-performance-badge performance-${performance.level}">
-                                ${performance.label}
-                            </span>
-                        </td>
-                    </tr>
-                `;
-            });
-
-            if (tableBody) {
-                tableBody.innerHTML = rows.join('');
-                
-                // Add click listeners to checkboxes
-                const checkboxes = tableBody.querySelectorAll('.user-checkbox');
-                checkboxes.forEach(checkbox => {
-                    checkbox.addEventListener('change', (e) => {
-                        const row = e.target.closest('tr');
-                        if (e.target.checked) {
-                            row.classList.add('selected');
-                        } else {
-                            row.classList.remove('selected');
-                        }
-                        this.updateSelectAllCheckbox();
-                        this.updateComparisonChart();
-                    });
-                });
-            }
-
-            if (loading) loading.style.display = 'none';
-            
-            // Reinitialize icons
+        if (this.allUsers.length === 0) {
+            grid.innerHTML = `
+                <div class="empty-state">
+                    <i data-lucide="users"></i>
+                    <p>Aucun commercial trouvé</p>
+                </div>
+            `;
             if (typeof lucide !== 'undefined') {
                 lucide.createIcons();
             }
-            
-            // Mettre à jour le graphique avec les BDR cochés par défaut
-            this.updateComparisonChart();
-
-        } catch (error) {
-            console.error('Error loading comparison table:', error);
-            const loading = document.getElementById('comparisonLoading');
-            const tableBody = document.getElementById('comparisonTableBody');
-            
-            if (tableBody) {
-                tableBody.innerHTML = `
-                    <tr>
-                        <td colspan="8" class="comparison-empty">
-                            <i data-lucide="alert-circle"></i>
-                            <p>Erreur lors du chargement des données</p>
-                        </td>
-                    </tr>
-                `;
-            }
-            if (loading) loading.style.display = 'none';
+            return;
         }
-    }
 
-    async getUserComparisonData(userId, dateFilter) {
-        try {
-            // Get prospects
-            let prospectsQuery = this.supabase
-                .from('crm_prospects')
-                .select('*')
-                .eq('user_id', userId);
+        const cardsHTML = this.allUsers.map(user => {
+            const stats = this.usersStats.get(user.id);
+            const fullName = `${user.first_name} ${user.last_name}`;
+            const initials = this.getInitials(user.first_name, user.last_name);
 
-            prospectsQuery = this.applyDateFilter(prospectsQuery, dateFilter, 'created_at');
+            return `
+                <div class="team-card" data-user-id="${user.id}">
+                    <div class="team-card-header">
+                        <div class="team-card-avatar">
+                            ${user.avatar_url ?
+                                `<img src="${user.avatar_url}" alt="${fullName}">` :
+                                `<div class="team-card-avatar-initials">${initials}</div>`
+                            }
+                        </div>
+                        <div class="team-card-info">
+                            <h4>${fullName}</h4>
+                            <span class="team-card-role">${user.role}</span>
+                        </div>
+                    </div>
+                    <div class="team-card-stats">
+                        <div class="team-card-stat">
+                            <span class="team-card-stat-label">Appels</span>
+                            <span class="team-card-stat-value">${stats?.totalCalls || 0}</span>
+                        </div>
+                        <div class="team-card-stat">
+                            <span class="team-card-stat-label">Prospects</span>
+                            <span class="team-card-stat-value">${stats?.totalProspects || 0}</span>
+                        </div>
+                        <div class="team-card-stat">
+                            <span class="team-card-stat-label">RDV bookés</span>
+                            <span class="team-card-stat-value">${stats?.bookedProspects || 0}</span>
+                        </div>
+                        <div class="team-card-stat">
+                            <span class="team-card-stat-label">Température moy.</span>
+                            <span class="team-card-stat-value">${stats?.avgTemperature || 0}</span>
+                        </div>
+                        <div class="team-card-stat">
+                            <span class="team-card-stat-label">Score BDR</span>
+                            <span class="team-card-stat-value">${stats?.avgBdrScore || 0}/10</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
 
-            const { data: prospects, error: prospectsError } = await prospectsQuery;
-            if (prospectsError) throw prospectsError;
+        grid.innerHTML = cardsHTML;
 
-            // Get calls
-            let callsQuery = this.supabase
-                .from('crm_calls')
-                .select('*')
-                .eq('user_id', userId);
+        // Add click listeners
+        const cards = grid.querySelectorAll('.team-card');
+        cards.forEach(card => {
+            card.addEventListener('click', () => {
+                const userId = parseInt(card.dataset.userId);
+                this.showUserDetails(userId);
+            });
+        });
 
-            callsQuery = this.applyDateFilter(callsQuery, dateFilter, 'date');
-
-            const { data: calls, error: callsError } = await callsQuery;
-            if (callsError) throw callsError;
-
-            // Calculate metrics
-            const totalCalls = calls?.length || 0;
-            const totalProspects = prospects?.length || 0;
-            
-            const avgTemperature = calls && calls.length > 0 ? 
-                Math.round(calls.reduce((sum, call) => sum + (call.temperature || 0), 0) / calls.length) : 0;
-            
-            // Calculate response rate (calls with positive status)
-            const positiveCalls = calls?.filter(call => 
-                call.status && ['intéressé', 'à rappeler', 'rdv_pris'].includes(call.status.toLowerCase())
-            ).length || 0;
-            const responseRate = totalCalls > 0 ? Math.round((positiveCalls / totalCalls) * 100) : 0;
-            
-            // Calculate RDV rate
-            const bookedProspects = prospects?.filter(p => p.booked === true).length || 0;
-            const rdvRate = totalProspects > 0 ? Math.round((bookedProspects / totalProspects) * 100) : 0;
-
-            return {
-                totalCalls,
-                totalProspects,
-                avgTemperature,
-                responseRate,
-                rdvRate,
-                bookedProspects
-            };
-
-        } catch (error) {
-            console.error(`Error getting data for user ${userId}:`, error);
-            return {
-                totalCalls: 0,
-                totalProspects: 0,
-                avgTemperature: 0,
-                responseRate: 0,
-                rdvRate: 0,
-                bookedProspects: 0
-            };
+        // Reinitialize icons
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
         }
     }
 
@@ -1306,402 +362,366 @@ class AnalyticsManager {
         return first + last || '?';
     }
 
-    calculatePerformanceLevel(stats) {
-        // Simple performance calculation based on multiple metrics
-        const score = (stats.responseRate * 0.3) + (stats.rdvRate * 0.4) + (stats.avgTemperature * 0.3);
-        
-        if (score >= 60) return { level: 'excellent', label: 'Excellent' };
-        if (score >= 40) return { level: 'good', label: 'Bon' };
-        if (score >= 20) return { level: 'average', label: 'Moyen' };
-        return { level: 'poor', label: 'Faible' };
+    async showUserDetails(userId) {
+        const user = this.allUsers.find(u => u.id === userId);
+        if (!user) return;
+
+        const stats = this.usersStats.get(userId);
+        const modal = document.getElementById('userDetailsModal');
+        const modalBody = document.getElementById('userDetailsModalBody');
+
+        if (!modal || !modalBody) return;
+
+        const fullName = `${user.first_name} ${user.last_name}`;
+        const initials = this.getInitials(user.first_name, user.last_name);
+
+        // Get latest BDR performance from calls
+        const callsWithPerformance = stats.calls.filter(c => c.bdr_performance && c.bdr_performance.overall_score);
+        const latestPerformance = callsWithPerformance.length > 0 ? callsWithPerformance[0].bdr_performance : null;
+
+        let performanceHTML = '';
+        if (latestPerformance) {
+            const criteriaScores = latestPerformance.criteria_scores || {};
+            const scores = Object.entries(criteriaScores);
+
+            // Find best and worst scores
+            let maxScore = -1, minScore = 11;
+            scores.forEach(([_, score]) => {
+                if (score > maxScore) maxScore = score;
+                if (score < minScore) minScore = score;
+            });
+
+            const criteriaLabels = {
+                'rapport_building': 'Rapport Building',
+                'needs_discovery': 'Découverte des besoins',
+                'objection_handling': 'Gestion des objections',
+                'pitch_clarity': 'Clarté du pitch',
+                'closing_effort': 'Effort de closing'
+            };
+
+            performanceHTML = `
+                <div class="performance-section">
+                    <h4><i data-lucide="award"></i> Évaluation BDR</h4>
+                    <div class="performance-overall">
+                        <span class="performance-overall-label">Score global</span>
+                        <span class="performance-overall-value">${latestPerformance.overall_score}/10</span>
+                    </div>
+                    <div class="performance-criteria">
+                        ${scores.map(([key, score]) => {
+                            let scoreClass = '';
+                            if (score === maxScore && maxScore !== minScore) scoreClass = 'best';
+                            if (score === minScore && maxScore !== minScore) scoreClass = 'worst';
+
+                            return `
+                                <div class="performance-criterion ${scoreClass}">
+                                    <span class="performance-criterion-label">${criteriaLabels[key] || key}</span>
+                                    <span class="performance-criterion-score">${score}/10</span>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                    ${latestPerformance.strengths && latestPerformance.strengths.length > 0 ? `
+                        <div class="performance-strengths">
+                            <h5><i data-lucide="check-circle"></i> Points forts</h5>
+                            <ul>
+                                ${latestPerformance.strengths.map(s => `<li>${s}</li>`).join('')}
+                            </ul>
+                        </div>
+                    ` : ''}
+                    ${latestPerformance.improvement_areas && latestPerformance.improvement_areas.length > 0 ? `
+                        <div class="performance-improvements">
+                            <h5><i data-lucide="alert-circle"></i> Axes d'amélioration</h5>
+                            <ul>
+                                ${latestPerformance.improvement_areas.map(i => `<li>${i}</li>`).join('')}
+                            </ul>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        // Generate call history
+        const callsHistoryHTML = await this.generateCallHistory(stats.calls);
+
+        modalBody.innerHTML = `
+            <div class="user-details-header">
+                <div class="user-details-avatar">
+                    ${user.avatar_url ?
+                        `<img src="${user.avatar_url}" alt="${fullName}">` :
+                        `<div class="user-details-avatar-initials">${initials}</div>`
+                    }
+                </div>
+                <div class="user-details-info">
+                    <h3>${fullName}</h3>
+                    <span class="user-details-role">${user.role}</span>
+                    ${user.mission ? `<p class="user-details-mission">${user.mission}</p>` : ''}
+                </div>
+            </div>
+
+            <div class="user-details-stats-grid">
+                <div class="user-detail-stat">
+                    <i data-lucide="phone"></i>
+                    <div>
+                        <span class="user-detail-stat-value">${stats.totalCalls}</span>
+                        <span class="user-detail-stat-label">Appels passés</span>
+                    </div>
+                </div>
+                <div class="user-detail-stat">
+                    <i data-lucide="users"></i>
+                    <div>
+                        <span class="user-detail-stat-value">${stats.totalProspects}</span>
+                        <span class="user-detail-stat-label">Prospects</span>
+                    </div>
+                </div>
+                <div class="user-detail-stat">
+                    <i data-lucide="calendar"></i>
+                    <div>
+                        <span class="user-detail-stat-value">${stats.bookedProspects}</span>
+                        <span class="user-detail-stat-label">RDV bookés</span>
+                    </div>
+                </div>
+                <div class="user-detail-stat">
+                    <i data-lucide="thermometer"></i>
+                    <div>
+                        <span class="user-detail-stat-value">${stats.avgTemperature}</span>
+                        <span class="user-detail-stat-label">Température moy.</span>
+                    </div>
+                </div>
+                <div class="user-detail-stat">
+                    <i data-lucide="trending-up"></i>
+                    <div>
+                        <span class="user-detail-stat-value">${stats.rdvRate}%</span>
+                        <span class="user-detail-stat-label">Taux RDV</span>
+                    </div>
+                </div>
+                <div class="user-detail-stat">
+                    <i data-lucide="target"></i>
+                    <div>
+                        <span class="user-detail-stat-value">${stats.conversionRate}%</span>
+                        <span class="user-detail-stat-label">Taux conversion</span>
+                    </div>
+                </div>
+            </div>
+
+            ${performanceHTML}
+
+            <div class="call-history-section">
+                <h4><i data-lucide="phone"></i> Historique des appels</h4>
+                ${callsHistoryHTML}
+            </div>
+        `;
+
+        // Show modal
+        modal.classList.add('active');
+
+        // Reinitialize icons
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
+
+        // Add event listeners for transcript buttons
+        const transcriptButtons = modalBody.querySelectorAll('.view-transcript-btn');
+        transcriptButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const callId = parseInt(btn.dataset.callId);
+                const call = stats.calls.find(c => c.id === callId);
+                if (call) {
+                    this.showTranscript(call);
+                }
+            });
+        });
     }
 
-    selectAllUsers(select) {
-        const checkboxes = document.querySelectorAll('.user-checkbox');
-        const selectAllCheckbox = document.getElementById('selectAllCheckbox');
-        
-        checkboxes.forEach(checkbox => {
-            checkbox.checked = select;
-            const row = checkbox.closest('tr');
-            if (select) {
-                row.classList.add('selected');
-            } else {
-                row.classList.remove('selected');
+    async generateCallHistory(calls) {
+        if (!calls || calls.length === 0) {
+            return `
+                <div class="empty-state">
+                    <i data-lucide="phone-off"></i>
+                    <p>Aucun appel enregistré</p>
+                </div>
+            `;
+        }
+
+        // Group by date
+        const callsByDate = {};
+        calls.forEach(call => {
+            const date = new Date(call.date).toISOString().split('T')[0];
+            if (!callsByDate[date]) {
+                callsByDate[date] = [];
             }
+            callsByDate[date].push(call);
         });
 
-        if (selectAllCheckbox) {
-            selectAllCheckbox.checked = select;
+        const sortedDates = Object.keys(callsByDate).sort((a, b) => new Date(b) - new Date(a));
+
+        let html = '<div class="call-history-list">';
+
+        for (const dateKey of sortedDates) {
+            const date = new Date(dateKey);
+            const dayName = date.toLocaleDateString('fr-FR', { weekday: 'long' });
+            const dateFormatted = date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+
+            html += `
+                <div class="call-history-date-group">
+                    <div class="call-history-date-header">
+                        <h5>${dayName.charAt(0).toUpperCase() + dayName.slice(1)} ${dateFormatted}</h5>
+                        <span class="call-history-date-count">${callsByDate[dateKey].length} appel${callsByDate[dateKey].length > 1 ? 's' : ''}</span>
+                    </div>
+            `;
+
+            for (const call of callsByDate[dateKey]) {
+                // Get prospect info
+                let prospectName = 'Prospect inconnu';
+                if (call.prospect_id) {
+                    const { data: prospect } = await this.supabase
+                        .from('crm_prospects')
+                        .select('first_name, last_name, society')
+                        .eq('id', call.prospect_id)
+                        .single();
+
+                    if (prospect) {
+                        prospectName = `${prospect.first_name || ''} ${prospect.last_name || ''}`.trim() || 'Prospect inconnu';
+                        if (prospect.society) {
+                            prospectName += ` - ${prospect.society}`;
+                        }
+                    }
+                }
+
+                const callTime = new Date(call.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+                const duration = call.duration ? `${Math.floor(call.duration / 60)}min` : '-';
+
+                let statusBadge = '';
+                let statusClass = '';
+                if (call.booked) {
+                    statusBadge = 'RDV Booké';
+                    statusClass = 'status-booked';
+                } else if (call.deposit_type === 'recorded' || call.deposit_type === 'not_recorded') {
+                    statusBadge = 'Décroché';
+                    statusClass = 'status-contacted';
+                } else if (call.deposit_type === 'no_contact') {
+                    statusBadge = 'Pas de réponse';
+                    statusClass = 'status-no-response';
+                } else {
+                    statusBadge = 'Autre';
+                    statusClass = 'status-other';
+                }
+
+                html += `
+                    <div class="call-history-item ${statusClass}">
+                        <div class="call-history-item-header">
+                            <div class="call-history-item-time">
+                                <i data-lucide="clock"></i>
+                                <span>${callTime}</span>
+                            </div>
+                            <span class="call-history-status-badge ${statusClass}">${statusBadge}</span>
+                        </div>
+                        <div class="call-history-item-prospect">
+                            <i data-lucide="user"></i>
+                            <strong>${prospectName}</strong>
+                        </div>
+                        <div class="call-history-item-info">
+                            <span><i data-lucide="timer"></i> ${duration}</span>
+                            ${call.temperature ? `<span><i data-lucide="thermometer"></i> ${call.temperature}</span>` : ''}
+                        </div>
+                        ${call.resume ? `
+                            <div class="call-history-item-resume">
+                                <p>${call.resume}</p>
+                            </div>
+                        ` : ''}
+                        ${call.transcription ? `
+                            <button class="view-transcript-btn" data-call-id="${call.id}">
+                                <i data-lucide="file-text"></i>
+                                Voir la transcription
+                            </button>
+                        ` : ''}
+                    </div>
+                `;
+            }
+
+            html += '</div>';
         }
 
-        // Update comparison chart
-        this.updateComparisonChart();
+        html += '</div>';
+        return html;
     }
 
-    updateSelectAllCheckbox() {
-        const checkboxes = document.querySelectorAll('.user-checkbox');
-        const selectAllCheckbox = document.getElementById('selectAllCheckbox');
-        
-        if (selectAllCheckbox && checkboxes.length > 0) {
-            const checkedCount = Array.from(checkboxes).filter(cb => cb.checked).length;
-            selectAllCheckbox.checked = checkedCount === checkboxes.length;
-            selectAllCheckbox.indeterminate = checkedCount > 0 && checkedCount < checkboxes.length;
-        }
-    }
+    showTranscript(call) {
+        const modal = document.getElementById('transcriptModal');
+        const modalBody = document.getElementById('transcriptModalBody');
 
-    getSelectedUsers() {
-        const checkboxes = document.querySelectorAll('.user-checkbox:checked');
-        return Array.from(checkboxes).map(cb => cb.dataset.userId);
-    }
+        if (!modal || !modalBody) return;
 
-    async updateComparisonChart() {
-        const selectedUserIds = this.getSelectedUsers();
-        const chartCanvas = document.getElementById('comparisonChart');
-        const emptyState = document.getElementById('comparisonChartEmpty');
-        
-        console.log('=== DEBUG COMPARISON CHART ===');
-        console.log('Selected user IDs:', selectedUserIds);
-        
-        if (!selectedUserIds.length) {
-            console.log('No users selected, showing empty state');
-            if (emptyState) emptyState.style.display = 'flex';
-            if (chartCanvas) chartCanvas.style.display = 'none';
-            if (this.charts.comparison) {
-                this.charts.comparison.destroy();
-                delete this.charts.comparison;
+        if (!call.transcription) {
+            modalBody.innerHTML = `
+                <div class="empty-state">
+                    <i data-lucide="file-text"></i>
+                    <p>Aucune transcription disponible</p>
+                </div>
+            `;
+            modal.classList.add('active');
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
             }
             return;
         }
 
-        if (emptyState) emptyState.style.display = 'none';
-        if (chartCanvas) chartCanvas.style.display = 'block';
+        // Format transcription with highlighted speakers
+        const formattedTranscript = this.formatTranscript(call.transcription);
 
-        try {
-            // Get period selection for comparison chart
-            const periodSelect = document.getElementById('comparisonPeriod');
-            const period = periodSelect?.value || '30';
-            
-            // Calculate date filter based on period
-            let dateFilter = { start: null, end: null };
-            if (period !== 'all') {
-                const daysAgo = parseInt(period);
-                const endDate = new Date();
-                const startDate = new Date();
-                startDate.setDate(endDate.getDate() - daysAgo);
-                
-                dateFilter = {
-                    start: startDate.toISOString(),
-                    end: endDate.toISOString()
-                };
-            }
-            
-            console.log('Comparison period:', period, 'Date filter:', dateFilter);
-            
-            const userPromises = selectedUserIds.map(userId => this.getUserTimeSeriesData(userId, dateFilter));
-            const userTimeSeriesData = await Promise.all(userPromises);
-            console.log('User time series data:', userTimeSeriesData);
+        modalBody.innerHTML = `
+            <div class="transcript-content">
+                ${formattedTranscript}
+            </div>
+        `;
 
-            // Get toggles state
-            const showCalls = document.getElementById('toggleComparisonCalls')?.checked ?? true;
-            const showAnswered = document.getElementById('toggleComparisonAnswered')?.checked ?? true;
-            const showMeetings = document.getElementById('toggleComparisonMeetings')?.checked ?? true;
+        modal.classList.add('active');
 
-            console.log('Toggles state:', { showCalls, showAnswered, showMeetings });
-
-            // Create chart
-            this.createComparisonChart(userTimeSeriesData, selectedUserIds, {
-                showCalls,
-                showAnswered,
-                showMeetings
-            }, dateFilter);
-
-        } catch (error) {
-            console.error('Error updating comparison chart:', error);
-            if (emptyState) {
-                emptyState.style.display = 'flex';
-                emptyState.querySelector('h4').textContent = 'Erreur lors du chargement';
-                emptyState.querySelector('p').textContent = 'Impossible de charger les données de comparaison.';
-            }
+        // Reinitialize icons
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
         }
     }
 
-    async getUserTimeSeriesData(userId, dateFilter) {
-        try {
-            console.log(`=== Getting time series data for user ${userId} ===`);
-            console.log('Date filter:', dateFilter);
-            
-            // Get user info
-            const { data: user } = await this.supabase
-                .from('users')
-                .select('first_name, last_name, email')
-                .eq('id', userId)
-                .single();
+    formatTranscript(transcription) {
+        // Split by lines
+        const lines = transcription.split('\n');
 
-            console.log('User data:', user);
+        let html = '';
+        lines.forEach(line => {
+            const trimmedLine = line.trim();
+            if (!trimmedLine) return;
 
-            // Get calls data for time series
-            let callsQuery = this.supabase
-                .from('crm_calls')
-                .select('*')
-                .eq('user_id', userId);
-
-            if (dateFilter && dateFilter.start && dateFilter.end) {
-                const startDate = dateFilter.start.split('T')[0];
-                const endDate = dateFilter.end.split('T')[0];
-                callsQuery = callsQuery.gte('date', startDate).lte('date', endDate);
-                console.log(`Filtering calls between ${startDate} and ${endDate}`);
+            // Check if line starts with BDR: or BDR :
+            if (trimmedLine.startsWith('BDR:') || trimmedLine.startsWith('BDR :')) {
+                const text = trimmedLine.replace(/^BDR\s*:\s*/, '');
+                html += `
+                    <div class="transcript-line transcript-bdr">
+                        <span class="transcript-speaker">BDR:</span>
+                        <span class="transcript-text">${text}</span>
+                    </div>
+                `;
             }
-
-            const { data: calls, error } = await callsQuery.order('date');
-            
-            if (error) {
-                console.error('Error fetching calls:', error);
-                console.error('Error details:', JSON.stringify(error, null, 2));
-                // Continue with empty data
-                return {
-                    userId,
-                    userName: `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || user?.email || 'Utilisateur',
-                    dailyStats: {}
-                };
+            // Check if line starts with Prospect: or Prospect :
+            else if (trimmedLine.startsWith('Prospect:') || trimmedLine.startsWith('Prospect :')) {
+                const text = trimmedLine.replace(/^Prospect\s*:\s*/, '');
+                html += `
+                    <div class="transcript-line transcript-prospect">
+                        <span class="transcript-speaker">Prospect:</span>
+                        <span class="transcript-text">${text}</span>
+                    </div>
+                `;
             }
-            
-            console.log(`Found ${calls?.length || 0} calls for user ${userId}:`, calls);
-
-            // Group by date and calculate metrics
-            const dailyStats = {};
-            calls?.forEach(call => {
-                const date = call.date.split('T')[0]; // Get date part only
-                if (!dailyStats[date]) {
-                    dailyStats[date] = {
-                        totalCalls: 0,
-                        pickups: 0,
-                        noPickups: 0,
-                        meetings: 0
-                    };
-                }
-                dailyStats[date].totalCalls++;
-                // Comptage correct : pickups = décrochés, noPickups = non décrochés
-                if (call.deposit_type === 'recorded' || call.deposit_type === 'not_recorded') {
-                    dailyStats[date].pickups++;
-                } else if (call.deposit_type === 'no_contact') {
-                    dailyStats[date].noPickups++;
-                }
-                // Count meetings - check if the call object has a 'booked' property (might be in JSON fields)
-                if (call.bdr_performance && typeof call.bdr_performance === 'object' && call.bdr_performance.meeting_booked) {
-                    dailyStats[date].meetings++;
-                }
-            });
-
-            console.log(`Daily stats for user ${userId}:`, dailyStats);
-
-            return {
-                userId,
-                userName: `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || user?.email || 'Utilisateur',
-                dailyStats
-            };
-        } catch (error) {
-            console.error(`Error getting time series data for user ${userId}:`, error);
-            return {
-                userId,
-                userName: 'Erreur',
-                dailyStats: {}
-            };
-        }
-    }
-
-    createComparisonChart(userTimeSeriesData, selectedUserIds, toggles, dateFilter = null) {
-        const ctx = document.getElementById('comparisonChart').getContext('2d');
-
-        // Destroy existing chart
-        if (this.charts.comparison) {
-            this.charts.comparison.destroy();
-        }
-
-        // Get all dates from user data
-        let allDates = [];
-        
-        if (dateFilter && dateFilter.start && dateFilter.end) {
-            // Generate all dates in the range
-            const startDate = new Date(dateFilter.start);
-            const endDate = new Date(dateFilter.end);
-            
-            const currentDate = new Date(startDate);
-            while (currentDate <= endDate) {
-                const dateStr = currentDate.toISOString().split('T')[0];
-                allDates.push(dateStr);
-                currentDate.setDate(currentDate.getDate() + 1);
-            }
-        } else {
-            // Fallback: get all unique dates from user data
-            const uniqueDates = new Set();
-            userTimeSeriesData.forEach(userData => {
-                Object.keys(userData.dailyStats).forEach(date => uniqueDates.add(date));
-            });
-            allDates = Array.from(uniqueDates).sort();
-        }
-
-        console.log('All dates in range:', allDates);
-
-        // Format dates for display
-        const formattedDates = allDates.map(dateStr => {
-            const [year, month, day] = dateStr.split('-');
-            return `${day}/${month}`;
-        });
-        console.log('Formatted dates:', formattedDates);
-
-        // Prepare datasets
-        const datasets = [];
-        const colors = [
-            '#006EFF', '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', 
-            '#FECA57', '#FF9FF3', '#54A0FF', '#5F27CD', '#00D2D3'
-        ];
-
-        userTimeSeriesData.forEach((userData, index) => {
-            const color = colors[index % colors.length];
-            
-            if (toggles.showCalls) {
-                const callsData = allDates.map(date => {
-                    return userData.dailyStats[date]?.totalCalls || 0;
-                });
-
-                datasets.push({
-                    label: `${userData.userName} - Appels`,
-                    data: callsData,
-                    borderColor: color,
-                    backgroundColor: color + '20',
-                    tension: 0.4,
-                    fill: true,
-                    yAxisID: 'y'
-                });
-            }
-
-            if (toggles.showAnswered) {
-                const answeredData = allDates.map(date => {
-                    return userData.dailyStats[date]?.pickups || 0;
-                });
-
-                datasets.push({
-                    label: `${userData.userName} - Décrochés`,
-                    data: answeredData,
-                    borderColor: color,
-                    backgroundColor: color + '20',
-                    borderDash: [5, 5],
-                    tension: 0.4,
-                    fill: true,
-                    yAxisID: 'y'
-                });
-            }
-
-            if (toggles.showMeetings) {
-                const meetingsData = allDates.map(date => {
-                    return userData.dailyStats[date]?.meetings || 0;
-                });
-
-                datasets.push({
-                    label: `${userData.userName} - RDV`,
-                    data: meetingsData,
-                    borderColor: color,
-                    backgroundColor: color + '20',
-                    borderDash: [2, 2],
-                    tension: 0.4,
-                    fill: true,
-                    yAxisID: 'y'
-                });
+            // Other lines
+            else {
+                html += `
+                    <div class="transcript-line">
+                        <span class="transcript-text">${trimmedLine}</span>
+                    </div>
+                `;
             }
         });
 
-        // Create chart
-        this.charts.comparison = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: formattedDates,
-                datasets: datasets
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                interaction: {
-                    mode: 'index',
-                    intersect: false,
-                },
-                plugins: {
-                    legend: {
-                        position: 'top',
-                        labels: {
-                            font: {
-                                family: 'Sora',
-                                size: 12
-                            },
-                            color: '#19273A',
-                            usePointStyle: true,
-                            padding: 15
-                        }
-                    },
-                    tooltip: {
-                        backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                        titleColor: '#19273A',
-                        bodyColor: '#1D2B3D',
-                        borderColor: '#7b90ad',
-                        borderWidth: 1,
-                        padding: 12,
-                        displayColors: true,
-                        callbacks: {
-                            title: function(context) {
-                                return `Date: ${context[0].label}`;
-                            },
-                            label: function(context) {
-                                let label = context.dataset.label || '';
-                                if (label) {
-                                    label += ': ';
-                                }
-                                label += context.parsed.y;
-                                return label;
-                            }
-                        }
-                    }
-                },
-                scales: {
-                    x: {
-                        display: true,
-                        title: {
-                            display: true,
-                            text: 'Date',
-                            font: {
-                                family: 'Sora',
-                                size: 12
-                            },
-                            color: '#1D2B3D'
-                        },
-                        ticks: {
-                            maxRotation: 45,
-                            minRotation: 45,
-                            font: {
-                                family: 'Sora',
-                                size: 11
-                            },
-                            color: '#7b90ad'
-                        },
-                        grid: {
-                            color: 'rgba(123, 144, 173, 0.1)',
-                            drawBorder: false
-                        }
-                    },
-                    y: {
-                        type: 'linear',
-                        display: true,
-                        position: 'left',
-                        title: {
-                            display: true,
-                            text: 'Nombre'
-                        },
-                        beginAtZero: true,
-                        ticks: {
-                            stepSize: 1
-                        }
-                    }
-                }
-            }
-        });
+        return html;
     }
 }
 
@@ -1715,9 +735,8 @@ function initializeAnalyticsIfNeeded() {
 
 // Initialize on page load if analytics is visible
 document.addEventListener('DOMContentLoaded', function() {
-    // Always try to initialize, but it will only work if analytics section exists
     initializeAnalyticsIfNeeded();
 });
 
-// Make the function globally available so it can be called from script.js
+// Make the function globally available
 window.initializeAnalyticsIfNeeded = initializeAnalyticsIfNeeded;

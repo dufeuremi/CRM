@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Cache Buster</title>
+
+    <!-- Cache Buster -->
+    <script src="cache-buster.js"></script>
+    <script>
+        // Version de test
+        CacheBuster.config.version = '1.0.0';
+        CacheBuster.init();
+    </script>
+
+    <!-- Fichiers de test -->
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="mails_styles.css">
+
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+            background: #f5f5f5;
+        }
+
+        .container {
+            background: white;
+            border-radius: 10px;
+            padding: 2rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #006eff;
+            padding-bottom: 1rem;
+        }
+
+        .section {
+            margin: 2rem 0;
+            padding: 1.5rem;
+            background: #f9f9f9;
+            border-radius: 8px;
+            border-left: 4px solid #006eff;
+        }
+
+        .section h2 {
+            margin-top: 0;
+            color: #006eff;
+        }
+
+        .file-list {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 1rem;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .file-item {
+            padding: 0.5rem;
+            border-bottom: 1px solid #eee;
+            font-family: monospace;
+            font-size: 0.9rem;
+        }
+
+        .file-item:last-child {
+            border-bottom: none;
+        }
+
+        .file-type {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 3px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            margin-right: 0.5rem;
+        }
+
+        .css {
+            background: #2196F3;
+            color: white;
+        }
+
+        .js {
+            background: #FFC107;
+            color: #333;
+        }
+
+        .url {
+            color: #666;
+            word-break: break-all;
+        }
+
+        .success {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+
+        .version-badge {
+            background: #4CAF50;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            display: inline-block;
+            margin: 1rem 0;
+            font-weight: bold;
+        }
+
+        button {
+            background: #006eff;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1rem;
+            margin: 0.5rem 0.5rem 0.5rem 0;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background: #0052cc;
+        }
+
+        .controls {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            margin: 1rem 0;
+        }
+
+        input[type="text"] {
+            padding: 0.75rem;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 1rem;
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .console {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 1rem;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            max-height: 200px;
+            overflow-y: auto;
+            margin-top: 1rem;
+        }
+
+        .console-line {
+            padding: 0.25rem 0;
+        }
+
+        .timestamp {
+            color: #808080;
+            margin-right: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Test du Cache Buster</h1>
+
+        <div class="section">
+            <h2>Statut actuel</h2>
+            <div class="version-badge">Version actuelle : <span id="currentVersion">Chargement...</span></div>
+            <p class="success" id="statusMessage">Le Cache Buster est actif !</p>
+        </div>
+
+        <div class="section">
+            <h2>Fichiers versionnés</h2>
+            <p>Liste de tous les fichiers CSS et JS avec leurs versions :</p>
+            <div class="file-list" id="fileList"></div>
+        </div>
+
+        <div class="section">
+            <h2>Contrôles</h2>
+            <div class="controls">
+                <input type="text" id="newVersion" placeholder="Nouvelle version (ex: 2.0.0)">
+                <button onclick="updateVersion()">Mettre à jour la version</button>
+            </div>
+            <div class="controls">
+                <button onclick="useTimestamp()">Utiliser un Timestamp</button>
+                <button onclick="reloadPage()">Recharger la page</button>
+                <button onclick="clearConsole()">Effacer la console</button>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Test de chargement dynamique</h2>
+            <div class="controls">
+                <button onclick="testLoadCSS()">Charger styles.css</button>
+                <button onclick="testLoadJS()">Charger script.js</button>
+                <button onclick="testReloadCSS()">Recharger styles.css</button>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Console de logs</h2>
+            <div class="console" id="console"></div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+    <script src="analytics.js"></script>
+
+    <script>
+        // Console custom
+        const consoleDiv = document.getElementById('console');
+
+        function log(message, type = 'info') {
+            const time = new Date().toLocaleTimeString();
+            const line = document.createElement('div');
+            line.className = 'console-line';
+            line.innerHTML = `<span class="timestamp">[${time}]</span> ${message}`;
+            consoleDiv.appendChild(line);
+            consoleDiv.scrollTop = consoleDiv.scrollHeight;
+            console.log(message);
+        }
+
+        function clearConsole() {
+            consoleDiv.innerHTML = '';
+            log('Console effacée');
+        }
+
+        // Afficher la version actuelle
+        function displayCurrentVersion() {
+            document.getElementById('currentVersion').textContent = CacheBuster.config.version;
+            log(`Version actuelle : ${CacheBuster.config.version}`);
+        }
+
+        // Lister tous les fichiers versionnés
+        function listVersionedFiles() {
+            const fileList = document.getElementById('fileList');
+            fileList.innerHTML = '';
+
+            // CSS files
+            const cssFiles = document.querySelectorAll('link[rel="stylesheet"]');
+            cssFiles.forEach(link => {
+                const href = link.getAttribute('href');
+                if (href && !href.startsWith('http')) {
+                    addFileToList(fileList, 'CSS', href);
+                }
+            });
+
+            // JS files
+            const jsFiles = document.querySelectorAll('script[src]');
+            jsFiles.forEach(script => {
+                const src = script.getAttribute('src');
+                if (src && !src.startsWith('http')) {
+                    addFileToList(fileList, 'JS', src);
+                }
+            });
+
+            log(`${cssFiles.length} fichiers CSS et ${jsFiles.length} fichiers JS listés`);
+        }
+
+        function addFileToList(container, type, url) {
+            const item = document.createElement('div');
+            item.className = 'file-item';
+            item.innerHTML = `
+                <span class="file-type ${type.toLowerCase()}">${type}</span>
+                <span class="url">${url}</span>
+            `;
+            container.appendChild(item);
+        }
+
+        // Mettre à jour la version
+        function updateVersion() {
+            const newVersion = document.getElementById('newVersion').value.trim();
+            if (!newVersion) {
+                alert('Veuillez entrer une version');
+                return;
+            }
+
+            CacheBuster.updateVersion(newVersion);
+            displayCurrentVersion();
+            listVersionedFiles();
+            log(`Version mise à jour : ${newVersion}`, 'success');
+        }
+
+        // Utiliser un timestamp
+        function useTimestamp() {
+            const timestamp = Date.now();
+            CacheBuster.updateVersion(timestamp);
+            displayCurrentVersion();
+            listVersionedFiles();
+            log(`Version mise à jour avec timestamp : ${timestamp}`, 'success');
+        }
+
+        // Recharger la page
+        function reloadPage() {
+            log('Rechargement de la page...');
+            setTimeout(() => {
+                location.reload();
+            }, 500);
+        }
+
+        // Tests de chargement dynamique
+        function testLoadCSS() {
+            log('Test de chargement CSS dynamique...');
+            CacheBuster.loadCSS('styles.css');
+            log('✅ CSS chargé avec succès', 'success');
+            setTimeout(listVersionedFiles, 100);
+        }
+
+        function testLoadJS() {
+            log('Test de chargement JS dynamique...');
+            CacheBuster.loadJS('script.js')
+                .then(() => {
+                    log('✅ JS chargé avec succès', 'success');
+                    setTimeout(listVersionedFiles, 100);
+                })
+                .catch(err => {
+                    log('❌ Erreur de chargement JS : ' + err.message, 'error');
+                });
+        }
+
+        function testReloadCSS() {
+            log('Test de rechargement CSS...');
+            CacheBuster.reloadCSS('styles.css');
+            log('✅ CSS rechargé avec succès', 'success');
+            setTimeout(listVersionedFiles, 100);
+        }
+
+        // Initialisation
+        window.addEventListener('DOMContentLoaded', () => {
+            log('=== Test du Cache Buster ===');
+            displayCurrentVersion();
+            listVersionedFiles();
+            log('Page initialisée avec succès');
+        });
+    </script>
+</body>
+</html>

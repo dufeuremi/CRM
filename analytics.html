@@ -8,6 +8,15 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@100;200;300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Cache Buster pour forcer le rechargement des fichiers CSS/JS -->
+    <script src="cache-buster.js"></script>
+    <script>
+        // Changez ce numéro de version à chaque mise à jour de vos fichiers
+        CacheBuster.config.version = '1.0.0';
+        CacheBuster.init();
+    </script>
+
     <link rel="stylesheet" href="styles.css">
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -114,313 +123,58 @@
                     <div class="analytics-loading" id="analyticsLoading" style="display: flex;">
                         <div class="loading-spinner"></div>
                     </div>
-                    
+
                     <div class="analytics-content" id="analyticsContent" style="display: none;">
-                        <!-- Sélecteur d'utilisateur -->
-                        <div class="analytics-filters">
-                            <div class="user-filter-container">
-                                <label for="userFilter" class="form-label">Analyser l'utilisateur :</label>
-                                <select id="userFilter" class="form-select">
-                                    <option value="">Choisir un utilisateur...</option>
-                                </select>
+                        <!-- Section 1: Graphique de comparaison -->
+                        <div class="analytics-section">
+                            <div class="analytics-section-header">
+                                <h3><i data-lucide="bar-chart-3"></i> Comparaison des commerciaux</h3>
+                                <p>Vue d'ensemble des performances de l'équipe commerciale</p>
                             </div>
-                            <div class="period-filter-container">
-                                <label for="periodFilter" class="form-label">Période :</label>
-                                <select id="periodFilter" class="form-select">
-                                    <option value="7">7 derniers jours</option>
-                                    <option value="30" selected>30 derniers jours</option>
-                                    <option value="90">90 derniers jours</option>
-                                    <option value="all">Depuis le début</option>
-                                </select>
+                            <div class="comparison-chart-wrapper">
+                                <canvas id="comparisonChart"></canvas>
                             </div>
                         </div>
 
-                        <!-- Section 1: Pipeline & Conversions -->
+                        <!-- Section 2: Cards des commerciaux -->
                         <div class="analytics-section">
                             <div class="analytics-section-header">
-                                <h3><i data-lucide="target"></i> Pipeline & Conversions</h3>
-                                <p>Suivre l'efficacité du BDR à transformer ses leads</p>
+                                <h3><i data-lucide="users"></i> Équipe commerciale</h3>
+                                <p>Cliquez sur une card pour voir les détails complets</p>
                             </div>
-                            <div class="analytics-grid">
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="user-plus"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="newProspectsCount">0</h4>
-                                        <p>🆕 Nouveaux prospects créés</p>
-                                    </div>
-                                </div>
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="check-circle"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="qualificationRate">0%</h4>
-                                        <p>✅ Taux de qualification</p>
-                                    </div>
-                                </div>
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="calendar"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="rdvConversionRate">0%</h4>
-                                        <p>📅 Taux de conversion en RDV</p>
-                                    </div>
-                                </div>
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="dollar-sign"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="clientConversionRate">0%</h4>
-                                        <p>💰 Taux de conversion en client</p>
-                                    </div>
-                                </div>
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="clock"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="avgConversionTime">0j</h4>
-                                        <p>⏱️ Temps moyen de conversion</p>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="analytics-charts-row">
-                                <div class="analytics-chart-container">
-                                    <h4>Funnel de conversion</h4>
-                                    <canvas id="conversionFunnelChart"></canvas>
-                                </div>
-                                <div class="analytics-chart-container">
-                                    <h4>Nouveaux prospects par jour</h4>
-                                    <canvas id="newProspectsChart"></canvas>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Section 2: Activité d'appels -->
-                        <div class="analytics-section">
-                            <div class="analytics-section-header">
-                                <div>
-                                    <h3><i data-lucide="phone"></i> Activité d'appels</h3>
-                                    <p>Mesurer l'intensité et la qualité de la prospection</p>
-                                </div>
-                                <div class="stats-period-selector">
-                                    <label for="callActivityPeriod">Période:</label>
-                                    <select id="callActivityPeriod" class="stats-period-select">
-                                        <option value="all">Depuis le début</option>
-                                        <option value="7">7 derniers jours</option>
-                                        <option value="30" selected>30 derniers jours</option>
-                                        <option value="90">90 derniers jours</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="analytics-grid">
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="phone-call"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="callsCount">0</h4>
-                                        <p>📈 Nombre d'appels passés</p>
-                                    </div>
-                                </div>
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="timer"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="avgCallDuration">0min</h4>
-                                        <p>⏳ Durée moyenne des appels</p>
-                                    </div>
-                                </div>
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="thumbs-up"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="positiveCallsRate">0%</h4>
-                                        <p>🔥 % d'appels avec statut positif</p>
-                                    </div>
-                                </div>
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="thermometer"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="avgTemperature">0</h4>
-                                        <p>💬 Température moyenne des appels</p>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="analytics-charts-row">
-                                <div class="analytics-chart-container">
-                                    <h4>Appels par jour</h4>
-                                    <canvas id="callsPerDayChart"></canvas>
-                                </div>
-                                <div class="analytics-chart-container">
-                                    <h4>Répartition par température</h4>
-                                    <canvas id="temperatureDistributionChart"></canvas>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Section 3: Performance individuelle -->
-                        <div class="analytics-section">
-                            <div class="analytics-section-header">
-                                <h3><i data-lucide="user"></i> Performance individuelle</h3>
-                                <p>Évaluer l'efficacité de chaque commercial</p>
-                            </div>
-                            <div class="analytics-grid">
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="users"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="assignedProspects">0</h4>
-                                        <p>🧩 Prospects assignés</p>
-                                    </div>
-                                </div>
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="calendar-check"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="bookedRdv">0</h4>
-                                        <p>📆 RDV bookés</p>
-                                    </div>
-                                </div>
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="phone"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="totalCallsMade">0</h4>
-                                        <p>☎️ Appels effectués</p>
-                                    </div>
-                                </div>
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="trending-up"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="globalConversionRate">0%</h4>
-                                        <p>🔁 Taux de conversion global</p>
-                                    </div>
-                                </div>
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="activity"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="followUpRate">0%</h4>
-                                        <p>📊 Taux de suivi</p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Section 4: Agenda & charge -->
-                        <div class="analytics-section">
-                            <div class="analytics-section-header">
-                                <h3><i data-lucide="calendar"></i> Agenda & charge</h3>
-                                <p>Comprendre la répartition du temps et la charge quotidienne</p>
-                            </div>
-                            <div class="analytics-grid">
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="calendar-days"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="totalEvents">0</h4>
-                                        <p>📅 Nombre d'événements</p>
-                                    </div>
-                                </div>
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="link"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="linkedEventsRate">0%</h4>
-                                        <p>🧭 Événements liés à des prospects</p>
-                                    </div>
-                                </div>
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="zap"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="busyDaysCount">0</h4>
-                                        <p>🔄 Jours à forte charge</p>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="analytics-charts-row">
-                                <div class="analytics-chart-container">
-                                    <h4>Charge par jour (heatmap)</h4>
-                                    <canvas id="workloadHeatmapChart"></canvas>
-                                </div>
-                                <div class="analytics-chart-container">
-                                    <h4>Événements par type</h4>
-                                    <canvas id="eventTypesChart"></canvas>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Section 5: Réactivité & Hygiène -->
-                        <div class="analytics-section">
-                            <div class="analytics-section-header">
-                                <h3><i data-lucide="shield-check"></i> Réactivité & Hygiène du pipeline</h3>
-                                <p>S'assurer que le BDR traite bien et rapidement ses leads</p>
-                            </div>
-                            <div class="analytics-grid">
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="clock"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="avgFirstCallDelay">0h</h4>
-                                        <p>🕒 Délai moyen du 1er appel</p>
-                                    </div>
-                                </div>
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="alert-triangle"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="prospectsWithoutCall">0</h4>
-                                        <p>🚨 Prospects sans appel après 7j</p>
-                                    </div>
-                                </div>
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="help-circle"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="prospectsWithoutStatus">0</h4>
-                                        <p>❌ Prospects sans pipeline_status</p>
-                                    </div>
-                                </div>
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="archive"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="activeArchivedRatio">0%</h4>
-                                        <p>📦 Ratio actifs / archivés</p>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="analytics-charts-row">
-                                <div class="analytics-chart-container">
-                                    <h4>Délai du 1er appel (distribution)</h4>
-                                    <canvas id="firstCallDelayChart"></canvas>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Section 6: Qualité des leads & canaux -->
-                        <div class="analytics-section">
-                            <div class="analytics-section-header">
-                                <h3><i data-lucide="filter"></i> Qualité des leads & canaux</h3>
-                                <p>Identifier d'où viennent les bons leads et lesquels convertissent le mieux</p>
-                            </div>
-                            <div class="analytics-grid">
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="pie-chart"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="leadSources">0</h4>
-                                        <p>📢 Sources de leads identifiées</p>
-                                    </div>
-                                </div>
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="trending-up"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="bestSourceConversion">0%</h4>
-                                        <p>⚡ Meilleur taux de conversion</p>
-                                    </div>
-                                </div>
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="thermometer"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="avgTempBySource">0</h4>
-                                        <p>🌡️ Température moyenne globale</p>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="analytics-charts-row">
-                                <div class="analytics-chart-container">
-                                    <h4>Répartition par segment</h4>
-                                    <canvas id="segmentDistributionChart"></canvas>
-                                </div>
-                                <div class="analytics-chart-container">
-                                    <h4>Conversion par segment</h4>
-                                    <canvas id="conversionBySegmentChart"></canvas>
-                                </div>
+                            <div class="team-cards-grid" id="teamCardsGrid">
+                                <!-- Cards will be generated here -->
                             </div>
                         </div>
                     </div>
                 </section>
+            </div>
+
+            <!-- Popup détails utilisateur -->
+            <div class="user-details-modal" id="userDetailsModal">
+                <div class="user-details-modal-content">
+                    <button class="user-details-modal-close" id="closeUserDetailsModal">
+                        <i data-lucide="x"></i>
+                    </button>
+                    <div class="user-details-modal-body" id="userDetailsModalBody">
+                        <!-- Content will be loaded dynamically -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Popup transcription -->
+            <div class="transcript-modal" id="transcriptModal">
+                <div class="transcript-modal-content">
+                    <button class="transcript-modal-close" id="closeTranscriptModal">
+                        <i data-lucide="x"></i>
+                    </button>
+                    <div class="transcript-modal-header">
+                        <h3><i data-lucide="file-text"></i> Transcription de l'appel</h3>
+                    </div>
+                    <div class="transcript-modal-body" id="transcriptModalBody">
+                        <!-- Transcription will be loaded here -->
+                    </div>
+                </div>
             </div>
         </main>
     </div>
