@@ -12,8 +12,8 @@
     <!-- Cache Buster pour forcer le rechargement des fichiers CSS/JS -->
     <script src="cache-buster.js"></script>
     <script>
-        // Changez ce numéro de version à chaque mise à jour de vos fichiers
-        CacheBuster.config.version = '1.0.0';
+        // Version automatique basée sur le timestamp pour forcer le refresh à chaque reload
+        CacheBuster.config.version = Date.now();
         CacheBuster.init();
     </script>
 

@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analytics Dashboard - Sales Team</title>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        /* =========================================
+           CSS BASE & RESET (Aligné sur votre CSS)
+           ========================================= */
+        * { margin: 0; padding: 0; box-sizing: border-box; scrollbar-width: thin; scrollbar-color: rgba(0, 110, 255, 0.3) var(--bg-light); }
+        
+        :root { 
+            --primary-color: #006EFF; 
+            --primary-hover: #0056CC;
+            --text-primary: #19273A; /* Couleur foncée du CSS fourni */
+            --text-secondary: #1D2B3D; /* Couleur secondaire du CSS fourni */
+            --bg-light: #F8F9FA; 
+            --bg-white: #FFFFFF; 
+            --border-color: #7b90ad; /* Bordure bleue-grise spécifique du CSS fourni */
+            --border-light: #E5E7EB;
+            --radius-card: 15px; /* Radius 15px du CSS fourni */
+            --shadow-standard: 0 4px 8px 0 rgba(0, 0, 0, 0.05);
+            --shadow-strong: 0 8px 16px 0 rgba(0, 0, 0, 0.1);
+            --transition: all 0.3s ease;
+        }
+
+        body { 
+            font-family: 'Sora', sans-serif; 
+            background-color: var(--bg-light); 
+            color: var(--text-primary); 
+            line-height: 1.6; 
+            padding: 2rem; 
+            max-width: 1400px; 
+            margin: 0 auto; 
+        }
+        
+        /* Headers */
+        .section-header { margin: 2.5rem 0 1.5rem 0; display: flex; align-items: center; justify-content: space-between; }
+        .section-header h3 { font-size: 1.5rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem; margin: 0; }
+        .section-header h3 i { width: 24px; height: 24px; color: var(--primary-color); }
+
+        /* KPI Cards Grid */
+        .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+        .kpi-card { 
+            background: var(--bg-white); 
+            padding: 1.5rem; 
+            border-radius: var(--radius-card); 
+            border: 1px solid var(--border-color); 
+            box-shadow: var(--shadow-standard);
+            transition: var(--transition);
+        }
+        .kpi-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-strong); }
+        .kpi-title { font-size: 0.875rem; color: var(--text-secondary); font-weight: 600; margin-bottom: 0.25rem; }
+        .kpi-value { font-size: 1.875rem; font-weight: 700; color: var(--text-primary); margin: 0; }
+        .kpi-sub { font-size: 0.8rem; color: #64748b; margin-top: 0.5rem; display: flex; align-items: center; gap: 0.25rem; }
+
+        /* Chart Section */
+        .chart-container { 
+            background: var(--bg-white); 
+            border-radius: var(--radius-card); 
+            border: 1px solid var(--border-color); 
+            padding: 1.5rem; 
+            margin-bottom: 2rem; 
+            box-shadow: var(--shadow-standard);
+        }
+        .chart-controls { display: flex; gap: 1.5rem; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid #e0e6ed; flex-wrap: wrap; align-items: center; }
+        .checkbox-wrapper { display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; font-weight: 500; cursor: pointer; color: var(--text-secondary); }
+        .checkbox-wrapper input { accent-color: var(--primary-color); width: 18px; height: 18px; cursor: pointer; }
+        
+        /* =========================================
+           LEADERBOARD
+           ========================================= */
+        .leaderboard-container { display: flex; gap: 1.5rem; margin-bottom: 2rem; flex-wrap: wrap; }
+        .leader-card { 
+            flex: 1; 
+            min-width: 250px;
+            background: var(--bg-white); 
+            border: 1px solid var(--border-color); 
+            border-radius: var(--radius-card); 
+            padding: 1.5rem; 
+            display: flex; 
+            align-items: center; 
+            gap: 1.5rem;
+            position: relative; 
+            box-shadow: var(--shadow-standard);
+            transition: var(--transition);
+        }
+        .leader-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-strong); }
+        
+        .leader-rank { 
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex; 
+            align-items: center; 
+            justify-content: center;
+            font-weight: 700;
+            color: white;
+            font-size: 1rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .rank-1 { background: #eab308; } 
+        .rank-2 { background: #94a3b8; }
+        .rank-3 { background: #d97706; }
+        
+        .leader-avatar { 
+            width: 64px; 
+            height: 64px; 
+            border-radius: 15px; /* Arrondi spécifique demandé dans le CSS (pas rond complet) */
+            border: 1px solid var(--border-color); 
+            object-fit: cover; 
+        }
+        
+        .leader-info h4 { font-size: 1.1rem; font-weight: 700; margin: 0 0 0.25rem 0; color: var(--text-primary); }
+        .leader-stat { font-size: 0.9rem; color: var(--text-secondary); }
+        .leader-stat strong { color: var(--primary-color); font-weight: 700; }
+
+        /* =========================================
+           LISTE BDR
+           ========================================= */
+        .team-list { display: flex; flex-direction: column; gap: 1.5rem; }
+        
+        .bdr-card { 
+            display: flex; 
+            align-items: center; 
+            background: var(--bg-white); 
+            border-radius: var(--radius-card); 
+            border: 1px solid var(--border-color); 
+            padding: 1.5rem; 
+            gap: 2rem; 
+            cursor: pointer; 
+            transition: var(--transition);
+            box-shadow: var(--shadow-standard);
+        }
+        .bdr-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-strong); border-color: var(--primary-color); }
+
+        /* Identité BDR */
+        .bdr-identity { display: flex; align-items: center; gap: 1.5rem; width: 300px; flex-shrink: 0; }
+        .bdr-avatar img { 
+            width: 80px; 
+            height: 80px; 
+            border-radius: 15px; /* Arrondi spécifique CSS */
+            border: 2px solid var(--border-color); 
+            object-fit: cover; 
+        }
+        .bdr-info h4 { font-size: 1.25rem; font-weight: 600; margin: 0 0 0.25rem 0; color: var(--text-primary); }
+        .bdr-info span { font-size: 0.875rem; color: var(--text-secondary); }
+
+        /* Stats Grid dans la ligne */
+        .bdr-stats-row { 
+            display: flex; 
+            flex: 1; 
+            justify-content: space-between; 
+            align-items: center; 
+            gap: 1rem;
+            background: #f8fafc;
+            padding: 1rem 1.5rem;
+            border-radius: 12px;
+            border: 1px solid #e0e6ed;
+        }
+        
+        .bdr-stat-box { text-align: left; flex: 1; }
+        .stat-label { font-size: 0.75rem; color: var(--text-secondary); font-weight: 500; display: block; margin-bottom: 0.25rem; }
+        .stat-val { font-size: 1.125rem; font-weight: 600; color: var(--text-primary); }
+
+        /* =========================================
+           MODALE DETAILS & TRANSCRIPT
+           ========================================= */
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; z-index: 9999; opacity: 0; transition: opacity 0.3s ease; }
+        .modal-overlay.active { display: flex; opacity: 1; }
+        
+        .modal-container { 
+            background: var(--bg-white); 
+            width: 95%; 
+            max-width: 900px; 
+            max-height: 85vh; 
+            border-radius: 25px; /* Border radius large du CSS */
+            border: 1px solid var(--border-color); 
+            overflow-y: auto; 
+            padding: 0; 
+            display: flex; 
+            flex-direction: column; 
+            box-shadow: var(--shadow-strong); 
+            transform: scale(0.95);
+            transition: transform 0.3s ease;
+        }
+        .modal-overlay.active .modal-container { transform: scale(1); }
+        
+        .modal-header { padding: 1.5rem; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; background: var(--bg-white); position: sticky; top: 0; z-index: 10; }
+        .modal-close { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-secondary); padding: 0.5rem; border-radius: 8px; transition: var(--transition); display: flex; align-items: center; justify-content: center; }
+        .modal-close:hover { background-color: var(--bg-light); color: var(--text-primary); }
+
+        .call-details-container { padding: 1.5rem; }
+        
+        /* Scores & Criteria */
+        .json-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; border: 1px solid var(--border-color); padding: 1rem 1.5rem; border-radius: 15px; background: #f8fafc; }
+        .json-score-box { font-size: 1.5rem; font-weight: 700; color: var(--text-primary); background: white; padding: 0.5rem 1rem; border-radius: 10px; border: 1px solid #e0e6ed; }
+        
+        .criteria-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+        .criterion-box { background: var(--bg-white); padding: 1rem; border-radius: 12px; border: 1px solid #e0e6ed; }
+        .criterion-name { font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 0.5rem; }
+        .progress-bg { height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden; margin-top: 0.5rem; }
+        .progress-fill { height: 100%; background: var(--text-primary); border-radius: 3px; }
+        .criterion-val { font-size: 1rem; font-weight: 700; float: right; color: var(--text-primary); }
+
+        /* Transcription Styling */
+        .transcript-section { border-top: 1px solid #e0e6ed; margin-top: 2rem; padding-top: 1.5rem; }
+        .transcript-toggle { width: 100%; text-align: left; background: none; border: none; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: space-between; color: var(--text-primary); font-size: 1rem; padding: 0.5rem 0; }
+        .transcript-content { display: none; margin-top: 1rem; font-size: 0.9375rem; line-height: 1.8; color: var(--text-primary); padding: 1.5rem; background: #f8fafc; border-radius: 15px; border: 1px solid var(--border-color); font-family: 'Sora', sans-serif; }
+        
+        /* Mise en avant BDR/Prospect */
+        .speaker-bdr { color: var(--primary-color); font-weight: 700; }
+        .speaker-prospect { color: var(--text-primary); font-weight: 700; }
+
+        /* Résumé appel */
+        .call-summary-text {
+            margin-top: 0.75rem;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            background-color: #f1f5f9;
+            padding: 0.75rem;
+            border-radius: 8px;
+            border-left: 3px solid var(--border-color);
+            font-style: italic;
+        }
+
+        @media (max-width: 900px) {
+            .bdr-card { flex-direction: column; align-items: flex-start; gap: 1.5rem; }
+            .bdr-identity { width: 100%; }
+            .bdr-stats-row { width: 100%; flex-wrap: wrap; gap: 1.5rem; }
+            .leaderboard-container { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 1. KPI GLOBAUX -->
+    <div class="section-header" style="margin-top: 0;">
+        <h3><i class="fas fa-chart-bar"></i> Performance Globale</h3>
+    </div>
+    
+    <div class="kpi-grid">
+        <div class="kpi-card">
+            <div class="kpi-title">Appels Semaine</div>
+            <div class="kpi-value">1,245</div>
+            <div class="kpi-sub"><i class="fas fa-calendar-week"></i> En cours</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-title">Appels Mois</div>
+            <div class="kpi-value">4,892</div>
+            <div class="kpi-sub"><i class="fas fa-calendar-alt"></i> Novembre</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-title">Total Cumulé</div>
+            <div class="kpi-value">12,450</div>
+            <div class="kpi-sub"><i class="fas fa-chart-line"></i> Depuis le début</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-title">Total RDV</div>
+            <div class="kpi-value" style="color: #10b981;">342</div>
+            <div class="kpi-sub" style="color: #10b981;">Validés</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-title">% Conv. RDV</div>
+            <div class="kpi-value">8.4%</div>
+            <div class="kpi-sub"><i class="fas fa-arrow-up"></i> +1.2%</div>
+        </div>
+    </div>
+
+    <!-- 2. GRAPHIQUE -->
+    <div class="chart-container">
+        <div class="chart-controls">
+            <div class="checkbox-wrapper"><input type="checkbox" checked onchange="updateChart()" id="checkCarre"> Carré</div>
+            <div class="checkbox-wrapper"><input type="checkbox" checked onchange="updateChart()" id="checkAndy"> Andy</div>
+            <div style="width: 1px; height: 20px; background: #e2e8f0; margin: 0 1rem;"></div>
+            <div class="checkbox-wrapper" style="color:var(--primary-color);"><input type="checkbox" checked onchange="updateChart()" id="checkRdv"> RDV</div>
+            <div class="checkbox-wrapper"><input type="checkbox" checked onchange="updateChart()" id="checkPick"> Décrochés</div>
+        </div>
+        <div style="height: 350px;">
+            <canvas id="mainChart"></canvas>
+        </div>
+    </div>
+
+    <!-- 3. TOP PERFORMERS (CRITÈRE : DÉCROCHÉS) -->
+    <div class="section-header">
+        <h3><i class="fas fa-medal"></i> Top Performers (Décrochés)</h3>
+    </div>
+    <div class="leaderboard-container">
+        <div class="leader-card">
+            <div class="leader-rank rank-1">1</div>
+            <img src="https://randomuser.me/api/portraits/men/32.jpg" class="leader-avatar" alt="Carré">
+            <div class="leader-info">
+                <h4>Carré</h4>
+                <div class="leader-stat"><strong>234</strong> décrochés</div>
+            </div>
+        </div>
+        <div class="leader-card">
+            <div class="leader-rank rank-2">2</div>
+            <img src="https://randomuser.me/api/portraits/women/44.jpg" class="leader-avatar" alt="Andy">
+            <div class="leader-info">
+                <h4>Andy</h4>
+                <div class="leader-stat"><strong>210</strong> décrochés</div>
+            </div>
+        </div>
+        <div class="leader-card">
+            <div class="leader-rank rank-3">3</div>
+            <img src="https://randomuser.me/api/portraits/men/85.jpg" class="leader-avatar" alt="Thomas">
+            <div class="leader-info">
+                <h4>Thomas</h4>
+                <div class="leader-stat"><strong>185</strong> décrochés</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. LISTE BDR -->
+    <div class="section-header">
+        <h3><i class="fas fa-users"></i> Détail par Commercial</h3>
+    </div>
+
+    <div class="team-list">
+        
+        <!-- Commercial 1: Carré -->
+        <div class="bdr-card" onclick="openHistory('Carré', 'https://randomuser.me/api/portraits/men/32.jpg', 'carre')">
+            <div class="bdr-identity">
+                <div class="bdr-avatar">
+                    <img src="https://randomuser.me/api/portraits/men/32.jpg" alt="Carré">
+                </div>
+                <div class="bdr-info">
+                    <h4>Carré</h4>
+                    <span>Senior SDR</span>
+                </div>
+            </div>
+            
+            <div class="bdr-stats-row">
+                <div class="bdr-stat-box">
+                    <span class="stat-label">Semaine</span>
+                    <span class="stat-val">320</span>
+                </div>
+                <div class="bdr-stat-box">
+                    <span class="stat-label">Mois</span>
+                    <span class="stat-val">1,240</span>
+                </div>
+                <div class="bdr-stat-box">
+                    <span class="stat-label">Total</span>
+                    <span class="stat-val">8,540</span>
+                </div>
+                <div class="bdr-stat-box">
+                    <span class="stat-label">Taux RDV</span>
+                    <span class="stat-val" style="color: #10b981;">4.8%</span>
+                </div>
+                <div class="bdr-stat-box">
+                    <span class="stat-label">Taux Réponse</span>
+                    <span class="stat-val">18.5%</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Commercial 2: Andy -->
+        <div class="bdr-card" onclick="openHistory('Andy', 'https://randomuser.me/api/portraits/women/44.jpg', 'andy')">
+            <div class="bdr-identity">
+                <div class="bdr-avatar">
+                    <img src="https://randomuser.me/api/portraits/women/44.jpg" alt="Andy">
+                </div>
+                <div class="bdr-info">
+                    <h4>Andy</h4>
+                    <span>Junior SDR</span>
+                </div>
+            </div>
+            
+            <div class="bdr-stats-row">
+                <div class="bdr-stat-box">
+                    <span class="stat-label">Semaine</span>
+                    <span class="stat-val">280</span>
+                </div>
+                <div class="bdr-stat-box">
+                    <span class="stat-label">Mois</span>
+                    <span class="stat-val">980</span>
+                </div>
+                <div class="bdr-stat-box">
+                    <span class="stat-label">Total</span>
+                    <span class="stat-val">3,120</span>
+                </div>
+                <div class="bdr-stat-box">
+                    <span class="stat-label">Taux RDV</span>
+                    <span class="stat-val" style="color: #10b981;">3.9%</span>
+                </div>
+                <div class="bdr-stat-box">
+                    <span class="stat-label">Taux Réponse</span>
+                    <span class="stat-val">16.2%</span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- MODAL DETAILS -->
+    <div class="modal-overlay" id="detailModal">
+        <div class="modal-container">
+            <div class="modal-header">
+                <div style="display:flex; align-items:center; gap:1rem;">
+                    <img src="" id="modalAvatar" style="width:50px; height:50px; border-radius:10px; border:1px solid #7b90ad; object-fit:cover;">
+                    <div>
+                        <h3 id="modalName" style="margin:0; font-size:1.25rem;">Nom</h3>
+                        <span style="font-size:0.875rem; color:var(--text-secondary);">Historique des appels</span>
+                    </div>
+                </div>
+                <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+            </div>
+            
+            <div id="modalContent" style="padding: 1.5rem;">
+                <!-- Injecté par JS -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- DONNÉES JSON ---
+        const analysisJson = {
+            "overall_score": 2,
+            "criteria_scores": {
+                "rapport_building": 3,
+                "needs_discovery": 4,
+                "objection_handling": 1,
+                "pitch_clarity": 4,
+                "closing_effort": 2
+            },
+            "strengths": [
+                "Identification claire en début d'appel",
+                "Brève mention de l'activité de l'agence",
+                "Tentative de relance après refus"
+            ],
+            "improvement_areas": [
+                "Professionnalisme (tolérance zéro)",
+                "Préparer des scripts alternatifs (standard)",
+                "Questions ouvertes pour identifier le bon interlocuteur"
+            ]
+        };
+
+        const mockCalls = {
+            'carre': [
+                { 
+                    date: 'Auj. 10:15', 
+                    duration: '4m 32s', 
+                    status: 'RDV Validé', 
+                    type: 'success', 
+                    summary: 'Appel productif avec le décisionnaire. Intérêt marqué pour l\'offre Premium. RDV fixé pour démo mardi prochain.',
+                    json: analysisJson 
+                },
+                { 
+                    date: 'Hier 15:30', 
+                    duration: '1m 12s', 
+                    status: 'Pas de réponse', 
+                    type: 'fail', 
+                    summary: 'Tentative de joindre le responsable IT. Barrage secrétaire infranchissable. Laissé un message vocal.',
+                    json: null 
+                }
+            ],
+            'andy': [
+                { 
+                    date: 'Hier 09:45', 
+                    duration: '8m 05s', 
+                    status: 'A rappeler', 
+                    type: 'warning', 
+                    summary: 'Bon contact initial mais le prospect part en réunion. A demandé à être rappelé demain matin.',
+                    json: analysisJson 
+                }
+            ]
+        };
+
+        // --- FONCTIONS ---
+
+        function openHistory(name, avatar, id) {
+            document.getElementById('modalName').innerText = name;
+            document.getElementById('modalAvatar').src = avatar;
+            
+            const container = document.getElementById('modalContent');
+            container.innerHTML = ''; 
+
+            const calls = mockCalls[id] || [];
+
+            calls.forEach(call => {
+                const callBlock = document.createElement('div');
+                callBlock.style.border = "1px solid #7b90ad";
+                callBlock.style.borderRadius = "15px";
+                callBlock.style.marginBottom = "1.5rem";
+                callBlock.style.overflow = "hidden";
+                callBlock.style.boxShadow = "0 2px 4px rgba(0,0,0,0.05)";
+
+                let statusColor = call.type === 'success' ? '#10b981' : (call.type === 'fail' ? '#ef4444' : '#f59e0b');
+                let statusBg = call.type === 'success' ? 'rgba(16, 185, 129, 0.1)' : (call.type === 'fail' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)');
+                
+                let html = `
+                    <div style="background:#f8fafc; padding:1rem 1.5rem; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
+                        <div style="font-size:1rem;">
+                            <span style="font-weight:700; color:var(--text-primary);">${call.date}</span>
+                            <span style="margin-left:0.75rem; color:var(--text-secondary); font-size:0.9rem;"><i class="far fa-clock"></i> ${call.duration}</span>
+                        </div>
+                        <span style="color:${statusColor}; background:${statusBg}; padding:0.35rem 0.75rem; border-radius:8px; font-weight:600; font-size:0.85rem;">
+                            ${call.status}
+                        </span>
+                    </div>
+                    <div style="padding: 1.5rem;">
+                        <div class="call-summary-text">
+                            <strong>Résumé :</strong> ${call.summary}
+                        </div>
+                `;
+
+                if (call.json) {
+                    const data = call.json;
+                    
+                    const criteriaHtml = Object.entries(data.criteria_scores).map(([key, score]) => {
+                        let label = key;
+                        if(key === 'rapport_building') label = 'Relationnel';
+                        if(key === 'needs_discovery') label = 'Découverte';
+                        if(key === 'objection_handling') label = 'Objections';
+                        if(key === 'pitch_clarity') label = 'Clarté';
+                        if(key === 'closing_effort') label = 'Closing';
+                        
+                        // Jauge simple
+                        let color = '#19273A';
+                        
+                        return `
+                            <div class="criterion-box">
+                                <span class="criterion-name">${label}</span>
+                                <div class="progress-bg">
+                                    <div class="progress-fill" style="width:${(score/5)*100}%; background:${color};"></div>
+                                </div>
+                                <span class="criterion-val">${score}/5</span>
+                            </div>
+                        `;
+                    }).join('');
+
+                    html += `
+                        <div style="margin-top: 1.5rem;">
+                            <div class="json-header">
+                                <span style="font-weight:600; font-size:1rem; color:var(--text-primary);">Qualité IA</span>
+                                <div class="json-score-box">${data.overall_score}/5</div>
+                            </div>
+
+                            <div class="criteria-grid">
+                                ${criteriaHtml}
+                            </div>
+
+                            <div class="transcript-section">
+                                <button class="transcript-toggle" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'block' ? 'none' : 'block'">
+                                    <span><i class="fas fa-align-left"></i> Transcription détaillée</span>
+                                    <i class="fas fa-chevron-down"></i>
+                                </button>
+                                <div class="transcript-content">
+                                    <span class="speaker-bdr">BDR:</span> Bonjour, ici Carré de l'agence WebForce.<br><br>
+                                    <span class="speaker-prospect">Prospect:</span> Oui bonjour.<br><br>
+                                    <span class="speaker-bdr">BDR:</span> Je cherche à joindre le responsable marketing...<br><br>
+                                    <span class="speaker-prospect">Prospect:</span> C'est moi.<br><br>
+                                    <span class="speaker-bdr">BDR:</span> Enchanté. Je vous appelle car nous aidons les agences comme la vôtre à...
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    html += `<div style="padding:1rem; text-align:center; font-size:0.85rem; color:#94a3b8; margin-top:1rem;">Analyse IA non disponible pour cet appel.</div>`;
+                }
+
+                html += `</div>`; // Fermeture du padding container
+                callBlock.innerHTML = html;
+                container.appendChild(callBlock);
+            });
+
+            document.getElementById('detailModal').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('detailModal').classList.remove('active');
+        }
+
+        // Fermeture au clic extérieur (Overlay)
+        document.getElementById('detailModal').addEventListener('click', function(event) {
+            if (event.target === this) {
+                closeModal();
+            }
+        });
+
+        // --- CHART JS ---
+        const ctx = document.getElementById('mainChart').getContext('2d');
+        let myChart;
+
+        // Configuration simplifiée pour graphisme épuré
+        Chart.defaults.font.family = "'Sora', sans-serif";
+        Chart.defaults.color = '#64748b';
+
+        const dataCarre = {
+            rdv: [8, 12, 10, 15],
+            pick: [40, 55, 45, 60]
+        };
+        const dataAndy = {
+            rdv: [5, 8, 12, 10],
+            pick: [30, 40, 50, 45]
+        };
+
+        function initChart() {
+            myChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: ['S1', 'S2', 'S3', 'S4'],
+                    datasets: []
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    tension: 0.4,
+                    plugins: { 
+                        legend: { position: 'bottom', labels: { boxWidth: 10, padding: 20 } } 
+                    },
+                    scales: { 
+                        y: { beginAtZero: true, grid: { color: '#f1f5f9' } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+            updateChart();
+        }
+
+        function updateChart() {
+            const showCarre = document.getElementById('checkCarre').checked;
+            const showAndy = document.getElementById('checkAndy').checked;
+            const showRdv = document.getElementById('checkRdv').checked;
+            const showPick = document.getElementById('checkPick').checked;
+
+            const datasets = [];
+
+            // Couleurs simples : Bleu principal, et Gris ou variante
+            if(showCarre) {
+                if(showRdv) datasets.push({ label: 'Carré (RDV)', data: dataCarre.rdv, borderColor: '#19273A', borderWidth: 2, pointRadius: 3 });
+                if(showPick) datasets.push({ label: 'Carré (Décrochés)', data: dataCarre.pick, borderColor: '#19273A', borderDash: [4,4], borderWidth: 1, pointRadius: 0 });
+            }
+
+            if(showAndy) {
+                if(showRdv) datasets.push({ label: 'Andy (RDV)', data: dataAndy.rdv, borderColor: '#006EFF', borderWidth: 2, pointRadius: 3 });
+                if(showPick) datasets.push({ label: 'Andy (Décrochés)', data: dataAndy.pick, borderColor: '#006EFF', borderDash: [4,4], borderWidth: 1, pointRadius: 0 });
+            }
+
+            myChart.data.datasets = datasets;
+            myChart.update();
+        }
+
+        window.onload = initChart;
+
+    </script>
+</body>
+</html>

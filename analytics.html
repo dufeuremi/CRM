@@ -12,8 +12,8 @@
     <!-- Cache Buster pour forcer le rechargement des fichiers CSS/JS -->
     <script src="cache-buster.js"></script>
     <script>
-        // Changez ce numéro de version à chaque mise à jour de vos fichiers
-        CacheBuster.config.version = '1.0.0';
+        // Version automatique basée sur le timestamp pour forcer le refresh à chaque reload
+        CacheBuster.config.version = Date.now();
         CacheBuster.init();
     </script>
 
@@ -125,54 +125,71 @@
                     </div>
 
                     <div class="analytics-content" id="analyticsContent" style="display: none;">
-                        <!-- Section 1: Graphique de comparaison -->
+                        <!-- 1. KPI GLOBAUX -->
                         <div class="analytics-section">
-                            <div class="analytics-section-header">
-                                <h3><i data-lucide="bar-chart-3"></i> Comparaison des commerciaux</h3>
-                                <p>Vue d'ensemble des performances de l'équipe commerciale</p>
+                            <div class="analytics-section-header" style="margin-bottom: 1.5rem;">
+                                <h3><i data-lucide="bar-chart-3"></i> Performance Globale</h3>
                             </div>
-                            <div class="comparison-chart-wrapper">
-                                <canvas id="comparisonChart"></canvas>
+
+                            <div class="kpi-grid" id="kpiGrid">
+                                <!-- KPIs will be generated here -->
                             </div>
                         </div>
 
-                        <!-- Section 2: Cards des commerciaux -->
+                        <!-- 2. GRAPHIQUE -->
+                        <div class="analytics-section">
+                            <div class="chart-container-analytics">
+                                <div class="chart-controls" id="chartControls">
+                                    <!-- Checkboxes will be generated here -->
+                                </div>
+                                <div style="height: 350px;">
+                                    <canvas id="mainChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 3. TOP PERFORMERS (CRITÈRE : DÉCROCHÉS) -->
                         <div class="analytics-section">
                             <div class="analytics-section-header">
-                                <h3><i data-lucide="users"></i> Équipe commerciale</h3>
-                                <p>Cliquez sur une card pour voir les détails complets</p>
+                                <h3><i data-lucide="medal"></i> Top Performers (Appels)</h3>
                             </div>
-                            <div class="team-cards-grid" id="teamCardsGrid">
-                                <!-- Cards will be generated here -->
+                            <div class="leaderboard-container" id="leaderboardContainer">
+                                <!-- Leaders will be generated here -->
+                            </div>
+                        </div>
+
+                        <!-- 4. LISTE BDR -->
+                        <div class="analytics-section">
+                            <div class="analytics-section-header">
+                                <h3><i data-lucide="users"></i> Détail par Commercial</h3>
+                            </div>
+
+                            <div class="team-list" id="teamList">
+                                <!-- BDR cards will be generated here -->
                             </div>
                         </div>
                     </div>
                 </section>
             </div>
 
-            <!-- Popup détails utilisateur -->
-            <div class="user-details-modal" id="userDetailsModal">
-                <div class="user-details-modal-content">
-                    <button class="user-details-modal-close" id="closeUserDetailsModal">
-                        <i data-lucide="x"></i>
-                    </button>
-                    <div class="user-details-modal-body" id="userDetailsModalBody">
-                        <!-- Content will be loaded dynamically -->
+            <!-- MODAL DETAILS -->
+            <div class="modal-overlay-analytics" id="detailModal">
+                <div class="modal-container-analytics">
+                    <div class="modal-header-analytics">
+                        <div style="display:flex; align-items:center; gap:1rem;">
+                            <img src="" id="modalAvatar" style="width:50px; height:50px; border-radius:10px; border:1px solid #7b90ad; object-fit:cover;">
+                            <div>
+                                <h3 id="modalName" style="margin:0; font-size:1.25rem; color: var(--text-primary);">Nom</h3>
+                                <span style="font-size:0.875rem; color:var(--text-secondary);">Historique des appels</span>
+                            </div>
+                        </div>
+                        <button class="modal-close-analytics" id="closeDetailModal">
+                            <i data-lucide="x"></i>
+                        </button>
                     </div>
-                </div>
-            </div>
 
-            <!-- Popup transcription -->
-            <div class="transcript-modal" id="transcriptModal">
-                <div class="transcript-modal-content">
-                    <button class="transcript-modal-close" id="closeTranscriptModal">
-                        <i data-lucide="x"></i>
-                    </button>
-                    <div class="transcript-modal-header">
-                        <h3><i data-lucide="file-text"></i> Transcription de l'appel</h3>
-                    </div>
-                    <div class="transcript-modal-body" id="transcriptModalBody">
-                        <!-- Transcription will be loaded here -->
+                    <div id="modalContent" class="modal-content-analytics">
+                        <!-- Injecté par JS -->
                     </div>
                 </div>
             </div>
@@ -345,6 +362,7 @@
     </script>
     
     <script src="analytics.js"></script>
+    <script src="admin-dashboard.js"></script>
     <script>
         // Initialize Lucide icons
         lucide.createIcons();

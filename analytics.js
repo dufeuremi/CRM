@@ -1,742 +1,933 @@
-// New Analytics Module for CRM
-class AnalyticsManager {
-    constructor() {
-        this.currentUser = null;
-        this.charts = {};
-        this.supabase = window.supabaseClient;
-        this.allUsers = [];
-        this.usersStats = new Map();
+// Analytics Module - Full version with Supabase integration
+// Based on test.html design with real Supabase data mapping
 
-        this.initializeAnalytics();
+let mainChart = null;
+let allUsersData = [];
+let allCallsData = [];
+
+// Initialize Analytics section
+async function initializeAnalyticsIfNeeded() {
+    console.log('Initializing Analytics module...');
+
+    const analyticsSection = document.getElementById('analytics');
+    if (!analyticsSection) {
+        console.log('Analytics section not found');
+        return;
     }
 
-    async initializeAnalytics() {
-        await this.loadAllUsers();
-        await this.loadComparisonChart();
-        await this.loadTeamCards();
-        this.setupEventListeners();
-        this.hideAnalyticsLoading();
-    }
+    // Show loading state
+    const analyticsLoading = document.getElementById('analyticsLoading');
+    const analyticsContent = document.getElementById('analyticsContent');
 
-    hideAnalyticsLoading() {
-        const loading = document.getElementById('analyticsLoading');
-        const content = document.getElementById('analyticsContent');
+    if (analyticsLoading) analyticsLoading.style.display = 'flex';
+    if (analyticsContent) analyticsContent.style.display = 'none';
 
-        if (loading) loading.style.display = 'none';
-        if (content) content.style.display = 'block';
-    }
+    try {
+        // Load all data
+        await loadAnalyticsData();
 
-    setupEventListeners() {
-        // Close user details modal
-        const closeUserDetailsBtn = document.getElementById('closeUserDetailsModal');
-        const userDetailsModal = document.getElementById('userDetailsModal');
+        // Render all sections
+        renderGlobalKPIs();
+        renderMainChart();
+        renderTopPerformers();
+        renderBDRList();
 
-        if (closeUserDetailsBtn) {
-            closeUserDetailsBtn.addEventListener('click', () => {
-                if (userDetailsModal) {
-                    userDetailsModal.classList.remove('active');
-                }
-            });
+        // Hide loading, show content
+        if (analyticsLoading) analyticsLoading.style.display = 'none';
+        if (analyticsContent) analyticsContent.style.display = 'block';
+
+        // Initialize Lucide icons
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
         }
-
-        // Close on outside click
-        if (userDetailsModal) {
-            userDetailsModal.addEventListener('click', (e) => {
-                if (e.target === userDetailsModal) {
-                    userDetailsModal.classList.remove('active');
-                }
-            });
-        }
-
-        // Close transcript modal
-        const closeTranscriptBtn = document.getElementById('closeTranscriptModal');
-        const transcriptModal = document.getElementById('transcriptModal');
-
-        if (closeTranscriptBtn) {
-            closeTranscriptBtn.addEventListener('click', () => {
-                if (transcriptModal) {
-                    transcriptModal.classList.remove('active');
-                }
-            });
-        }
-
-        // Close on outside click
-        if (transcriptModal) {
-            transcriptModal.addEventListener('click', (e) => {
-                if (e.target === transcriptModal) {
-                    transcriptModal.classList.remove('active');
-                }
-            });
+    } catch (error) {
+        console.error('Error initializing analytics:', error);
+        if (analyticsLoading) analyticsLoading.style.display = 'none';
+        if (typeof showToast === 'function') {
+            showToast('Erreur lors du chargement des analytics', 'error');
         }
     }
+}
 
-    async loadAllUsers() {
-        try {
-            const { data: users, error } = await this.supabase
-                .from('users')
-                .select('id, first_name, last_name, email, avatar_url, role, mission')
-                .in('role', ['admin', 'BDR'])
-                .order('first_name');
+// Load all analytics data from Supabase
+async function loadAnalyticsData() {
+    try {
+        const supabase = window.supabaseClient;
 
-            if (error) throw error;
+        console.log('🔄 [ANALYTICS] Starting data load...');
+        console.log('🔑 [ANALYTICS] Current user ID:', window.currentUserId);
 
-            this.allUsers = users || [];
+        // Get ALL users (bdr and admin) - afficher tout le monde
+        console.log('👥 [ANALYTICS] Fetching ALL users (bdr + admin)...');
+        const { data: users, error: usersError } = await supabase
+            .from('users')
+            .select('id, first_name, last_name, avatar_url, email, role')
+            .order('first_name');
 
-            // Load stats for all users
-            const statsPromises = this.allUsers.map(user => this.getUserStats(user.id));
-            const stats = await Promise.all(statsPromises);
-
-            this.allUsers.forEach((user, index) => {
-                this.usersStats.set(user.id, stats[index]);
-            });
-
-        } catch (error) {
-            console.error('Error loading users:', error);
-            showToast('Erreur lors du chargement des utilisateurs', 'error');
-        }
-    }
-
-    async getUserStats(userId) {
-        try {
-            // Get prospects
-            const { data: prospects, error: prospectsError } = await this.supabase
-                .from('crm_prospects')
-                .select('*')
-                .eq('user_id', userId);
-
-            if (prospectsError) throw prospectsError;
-
-            // Get calls
-            const { data: calls, error: callsError } = await this.supabase
-                .from('crm_calls')
-                .select('*')
-                .eq('user_id', userId);
-
-            if (callsError) throw callsError;
-
-            // Calculate stats
-            const totalProspects = prospects?.length || 0;
-            const totalCalls = calls?.length || 0;
-            const bookedProspects = prospects?.filter(p => p.booked === true).length || 0;
-            const convertedProspects = prospects?.filter(p => p.conversion_date).length || 0;
-
-            const avgTemperature = calls && calls.length > 0 ?
-                Math.round(calls.reduce((sum, call) => sum + (call.temperature || 0), 0) / calls.length) : 0;
-
-            const rdvRate = totalProspects > 0 ? Math.round((bookedProspects / totalProspects) * 100) : 0;
-            const conversionRate = totalProspects > 0 ? Math.round((convertedProspects / totalProspects) * 100) : 0;
-
-            // Calculate average BDR performance score
-            const callsWithPerformance = calls?.filter(c => c.bdr_performance && c.bdr_performance.overall_score) || [];
-            const avgBdrScore = callsWithPerformance.length > 0 ?
-                (callsWithPerformance.reduce((sum, call) => sum + (call.bdr_performance.overall_score || 0), 0) / callsWithPerformance.length).toFixed(1) : 0;
-
-            return {
-                totalProspects,
-                totalCalls,
-                bookedProspects,
-                convertedProspects,
-                avgTemperature,
-                rdvRate,
-                conversionRate,
-                avgBdrScore,
-                prospects,
-                calls
-            };
-        } catch (error) {
-            console.error(`Error getting stats for user ${userId}:`, error);
-            return {
-                totalProspects: 0,
-                totalCalls: 0,
-                bookedProspects: 0,
-                convertedProspects: 0,
-                avgTemperature: 0,
-                rdvRate: 0,
-                conversionRate: 0,
-                avgBdrScore: 0,
-                prospects: [],
-                calls: []
-            };
-        }
-    }
-
-    async loadComparisonChart() {
-        const ctx = document.getElementById('comparisonChart');
-        if (!ctx) return;
-
-        // Destroy existing chart
-        if (this.charts.comparison) {
-            this.charts.comparison.destroy();
+        if (usersError) {
+            console.error('❌ [ANALYTICS] Error fetching users:', usersError);
+            throw usersError;
         }
 
-        // Prepare data
-        const labels = this.allUsers.map(user => `${user.first_name} ${user.last_name}`);
-        const callsData = this.allUsers.map(user => {
-            const stats = this.usersStats.get(user.id);
-            return stats?.totalCalls || 0;
+        console.log(`✅ [ANALYTICS] Loaded ${users?.length || 0} users:`, users);
+
+        // Log role breakdown
+        const roleBreakdown = {};
+        users?.forEach(u => {
+            roleBreakdown[u.role] = (roleBreakdown[u.role] || 0) + 1;
         });
-        const rdvData = this.allUsers.map(user => {
-            const stats = this.usersStats.get(user.id);
-            return stats?.bookedProspects || 0;
-        });
-        const conversionData = this.allUsers.map(user => {
-            const stats = this.usersStats.get(user.id);
-            return stats?.conversionRate || 0;
+        console.log('📊 [ANALYTICS] Role breakdown:', roleBreakdown);
+
+        const finalUsers = users;
+
+        // Get all calls
+        console.log('📞 [ANALYTICS] Fetching all calls from crm_calls...');
+        const { data: calls, error: callsError } = await supabase
+            .from('crm_calls')
+            .select('*')
+            .order('date', { ascending: false });
+
+        if (callsError) {
+            console.error('❌ [ANALYTICS] Error fetching calls:', callsError);
+            throw callsError;
+        }
+
+        console.log(`✅ [ANALYTICS] Loaded ${calls?.length || 0} calls:`, calls);
+
+        allUsersData = finalUsers || [];
+        allCallsData = calls || [];
+
+        console.log(`📋 [ANALYTICS] Final users count: ${allUsersData.length}`);
+
+        // Log breakdown by user
+        console.log('📊 [ANALYTICS] Calls breakdown by user:');
+        if (allUsersData.length === 0) {
+            console.error('❌ [ANALYTICS] No users available to match with calls!');
+        }
+
+        allUsersData.forEach(user => {
+            const userCalls = allCallsData.filter(call => call.user_id === user.id);
+            console.log(`  - ${user.first_name} ${user.last_name} (ID: ${user.id}): ${userCalls.length} calls`);
+            if (userCalls.length > 0) {
+                console.log(`    Sample user_id from calls:`, userCalls[0].user_id, `(type: ${typeof userCalls[0].user_id})`);
+            }
         });
 
-        this.charts.comparison = new Chart(ctx, {
-            type: 'bar',
+        // Also check if there are calls with user_ids that don't match any user
+        const userIds = new Set(allUsersData.map(u => u.id));
+        const unmatchedCalls = allCallsData.filter(call => !userIds.has(call.user_id));
+        if (unmatchedCalls.length > 0) {
+            console.warn(`⚠️ [ANALYTICS] Found ${unmatchedCalls.length} calls with unmatched user_ids:`,
+                [...new Set(unmatchedCalls.map(c => c.user_id))]);
+        }
+
+        console.log('✅ [ANALYTICS] Data loading complete!');
+    } catch (error) {
+        console.error('❌ [ANALYTICS] Fatal error loading analytics data:', error);
+        throw error;
+    }
+}
+
+// Calculate statistics for a user
+function calculateUserStats(userId) {
+    console.log(`📊 [ANALYTICS] Calculating stats for user ID: ${userId}`);
+
+    const userCalls = allCallsData.filter(call => call.user_id === userId);
+    console.log(`  📞 Found ${userCalls.length} calls for user ID ${userId}`);
+
+    if (userCalls.length > 0) {
+        console.log(`  📅 Sample call dates:`, userCalls.slice(0, 3).map(c => ({ date: c.date, user_id: c.user_id, booked: c.booked, status: c.status })));
+    }
+
+    // Calculate time periods
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay());
+    startOfWeek.setHours(0, 0, 0, 0);
+
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    console.log(`  📆 Date filters: Week start: ${startOfWeek.toISOString()}, Month start: ${startOfMonth.toISOString()}`);
+
+    // Filter calls by period
+    const callsThisWeek = userCalls.filter(call => new Date(call.date) >= startOfWeek);
+    const callsThisMonth = userCalls.filter(call => new Date(call.date) >= startOfMonth);
+
+    // Count answered calls (status not 'no_answer' or similar)
+    const answeredCalls = userCalls.filter(call => {
+        const status = call.status?.toLowerCase() || '';
+        return status !== 'no_answer' && status !== 'pas de réponse' && status !== 'non décroché';
+    });
+
+    // Count RDV
+    const rdvCalls = userCalls.filter(call => call.booked === true);
+
+    // Calculate rates
+    const answerRate = userCalls.length > 0 ? (answeredCalls.length / userCalls.length) * 100 : 0;
+    const rdvRate = userCalls.length > 0 ? (rdvCalls.length / userCalls.length) * 100 : 0;
+
+    return {
+        totalCalls: userCalls.length,
+        callsThisWeek: callsThisWeek.length,
+        callsThisMonth: callsThisMonth.length,
+        answeredCalls: answeredCalls.length,
+        rdvBooked: rdvCalls.length,
+        answerRate: answerRate.toFixed(1),
+        rdvRate: rdvRate.toFixed(1)
+    };
+}
+
+// Render global KPIs
+function renderGlobalKPIs() {
+    console.log('📊 [ANALYTICS] Rendering global KPIs...');
+
+    const kpiGrid = document.getElementById('kpiGrid');
+    if (!kpiGrid) {
+        console.error('❌ [ANALYTICS] KPI grid element not found!');
+        return;
+    }
+
+    // Calculate global stats
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay());
+    startOfWeek.setHours(0, 0, 0, 0);
+
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const callsThisWeek = allCallsData.filter(call => new Date(call.date) >= startOfWeek).length;
+    const callsThisMonth = allCallsData.filter(call => new Date(call.date) >= startOfMonth).length;
+    const totalCalls = allCallsData.length;
+    const totalRDV = allCallsData.filter(call => call.booked === true).length;
+    const conversionRate = totalCalls > 0 ? ((totalRDV / totalCalls) * 100).toFixed(1) : 0;
+
+    console.log('📈 [ANALYTICS] KPI values:', {
+        callsThisWeek,
+        callsThisMonth,
+        totalCalls,
+        totalRDV,
+        conversionRate: `${conversionRate}%`
+    });
+
+    kpiGrid.innerHTML = `
+        <div class="kpi-card">
+            <div class="kpi-content">
+                <h4>${callsThisWeek}</h4>
+                <p>Appels Semaine</p>
+                <div class="kpi-sub"><i data-lucide="calendar-days"></i> En cours</div>
+            </div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-content">
+                <h4>${callsThisMonth}</h4>
+                <p>Appels Mois</p>
+                <div class="kpi-sub"><i data-lucide="calendar"></i> ${new Date().toLocaleString('fr-FR', { month: 'long' })}</div>
+            </div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-content">
+                <h4>${totalCalls}</h4>
+                <p>Total Cumulé</p>
+                <div class="kpi-sub"><i data-lucide="activity"></i> Depuis le début</div>
+            </div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-content">
+                <h4 style="color: #10b981;">${totalRDV}</h4>
+                <p>Total RDV</p>
+                <div class="kpi-sub" style="color: #10b981;">Validés</div>
+            </div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-content">
+                <h4>${conversionRate}%</h4>
+                <p>% Conv. RDV</p>
+                <div class="kpi-sub"><i data-lucide="arrow-up"></i> Taux global</div>
+            </div>
+        </div>
+    `;
+
+    // Reinitialize icons
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+}
+
+// Render main chart with controls
+function renderMainChart() {
+    const chartContainer = document.querySelector('.chart-container-analytics');
+    if (!chartContainer) return;
+
+    // Build chart HTML with controls (using checkbox-wrapper like test.html)
+    chartContainer.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid #e0e6ed;">
+            <div class="chart-controls" id="chartControls" style="flex: 1; margin-bottom: 0; padding-bottom: 0; border-bottom: none;">
+                ${allUsersData.map((user, index) => `
+                    <div class="checkbox-wrapper">
+                        <input type="checkbox" ${index < 2 ? 'checked' : ''} onchange="updateMainChart()" data-user-id="${user.id}">
+                        <span>${user.first_name}</span>
+                    </div>
+                `).join('')}
+                <div style="width: 1px; height: 20px; background: #e2e8f0; margin: 0 1rem;"></div>
+                <div class="checkbox-wrapper">
+                    <input type="checkbox" checked onchange="updateMainChart()" id="checkTotal">
+                    <span>Total appels</span>
+                </div>
+                <div class="checkbox-wrapper" style="color:var(--primary-color);">
+                    <input type="checkbox" checked onchange="updateMainChart()" id="checkRdv">
+                    <span>RDV</span>
+                </div>
+                <div class="checkbox-wrapper">
+                    <input type="checkbox" checked onchange="updateMainChart()" id="checkAnswered">
+                    <span>Décrochés</span>
+                </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <label style="font-size: 0.875rem; color: var(--text-secondary); font-weight: 500;">Période:</label>
+                <select id="chartPeriod" onchange="updateMainChart()" style="padding: 0.5rem 0.75rem; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-white); color: var(--text-primary); font-family: 'Sora', sans-serif; font-size: 0.875rem; cursor: pointer;">
+                    <option value="7">7 jours</option>
+                    <option value="14">14 jours</option>
+                    <option value="30" selected>30 jours</option>
+                    <option value="60">60 jours</option>
+                    <option value="90">90 jours</option>
+                </select>
+            </div>
+        </div>
+        <div style="height: 350px;">
+            <canvas id="mainChart"></canvas>
+        </div>
+    `;
+
+    // Initialize chart
+    initMainChart();
+}
+
+// Initialize main chart
+function initMainChart() {
+    const ctx = document.getElementById('mainChart');
+    if (!ctx) return;
+
+    // Configure Chart.js defaults
+    if (typeof Chart !== 'undefined') {
+        Chart.defaults.font.family = "'Sora', sans-serif";
+        Chart.defaults.color = '#64748b';
+
+        mainChart = new Chart(ctx, {
+            type: 'line',
             data: {
-                labels: labels,
-                datasets: [
-                    {
-                        label: 'Appels',
-                        data: callsData,
-                        backgroundColor: 'rgba(0, 110, 255, 0.8)',
-                        borderColor: 'rgba(0, 110, 255, 1)',
-                        borderWidth: 1,
-                        yAxisID: 'y'
-                    },
-                    {
-                        label: 'RDV bookés',
-                        data: rdvData,
-                        backgroundColor: 'rgba(16, 185, 129, 0.8)',
-                        borderColor: 'rgba(16, 185, 129, 1)',
-                        borderWidth: 1,
-                        yAxisID: 'y'
-                    },
-                    {
-                        label: 'Taux de conversion (%)',
-                        data: conversionData,
-                        type: 'line',
-                        backgroundColor: 'rgba(245, 158, 11, 0.2)',
-                        borderColor: 'rgba(245, 158, 11, 1)',
-                        borderWidth: 2,
-                        yAxisID: 'y1',
-                        tension: 0.4
-                    }
-                ]
+                labels: [],
+                datasets: []
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 interaction: {
                     mode: 'index',
-                    intersect: false
+                    intersect: false,
                 },
                 plugins: {
                     legend: {
-                        position: 'top'
+                        position: 'bottom',
+                        labels: {
+                            boxWidth: 10,
+                            padding: 20,
+                            font: {
+                                family: 'Sora',
+                                size: 12
+                            }
+                        }
                     },
                     tooltip: {
+                        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                        titleColor: '#19273A',
+                        bodyColor: '#1D2B3D',
+                        borderColor: '#7b90ad',
+                        borderWidth: 1,
+                        padding: 12,
                         callbacks: {
-                            label: function(context) {
-                                let label = context.dataset.label || '';
-                                if (label) {
-                                    label += ': ';
-                                }
-                                label += context.parsed.y;
-                                if (context.dataset.yAxisID === 'y1') {
-                                    label += '%';
-                                }
-                                return label;
+                            title: function(context) {
+                                // Show full date in tooltip
+                                return context[0].label;
                             }
                         }
                     }
                 },
                 scales: {
                     y: {
-                        type: 'linear',
-                        display: true,
-                        position: 'left',
                         beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: 'Nombre'
+                        grid: {
+                            color: '#f1f5f9'
                         },
                         ticks: {
+                            font: {
+                                family: 'Sora',
+                                size: 11
+                            },
                             stepSize: 1
                         }
                     },
-                    y1: {
-                        type: 'linear',
-                        display: true,
-                        position: 'right',
-                        beginAtZero: true,
-                        max: 100,
-                        title: {
-                            display: true,
-                            text: 'Taux de conversion (%)'
-                        },
+                    x: {
                         grid: {
-                            drawOnChartArea: false
+                            display: false
+                        },
+                        ticks: {
+                            font: {
+                                family: 'Sora',
+                                size: 11
+                            },
+                            maxRotation: 45,
+                            minRotation: 45
                         }
                     }
                 }
             }
         });
+
+        updateMainChart();
     }
+}
 
-    async loadTeamCards() {
-        const grid = document.getElementById('teamCardsGrid');
-        if (!grid) return;
+// Update main chart based on checkboxes and period
+function updateMainChart() {
+    if (!mainChart) return;
 
-        if (this.allUsers.length === 0) {
-            grid.innerHTML = `
-                <div class="empty-state">
-                    <i data-lucide="users"></i>
-                    <p>Aucun commercial trouvé</p>
-                </div>
-            `;
-            if (typeof lucide !== 'undefined') {
-                lucide.createIcons();
-            }
-            return;
-        }
+    const showTotal = document.getElementById('checkTotal')?.checked || false;
+    const showRdv = document.getElementById('checkRdv')?.checked || false;
+    const showAnswered = document.getElementById('checkAnswered')?.checked || false;
+    const periodDays = parseInt(document.getElementById('chartPeriod')?.value || 30);
 
-        const cardsHTML = this.allUsers.map(user => {
-            const stats = this.usersStats.get(user.id);
-            const fullName = `${user.first_name} ${user.last_name}`;
-            const initials = this.getInitials(user.first_name, user.last_name);
+    console.log(`📊 [CHART] Updating chart for ${periodDays} days`);
 
-            return `
-                <div class="team-card" data-user-id="${user.id}">
-                    <div class="team-card-header">
-                        <div class="team-card-avatar">
-                            ${user.avatar_url ?
-                                `<img src="${user.avatar_url}" alt="${fullName}">` :
-                                `<div class="team-card-avatar-initials">${initials}</div>`
-                            }
-                        </div>
-                        <div class="team-card-info">
-                            <h4>${fullName}</h4>
-                            <span class="team-card-role">${user.role}</span>
-                        </div>
-                    </div>
-                    <div class="team-card-stats">
-                        <div class="team-card-stat">
-                            <span class="team-card-stat-label">Appels</span>
-                            <span class="team-card-stat-value">${stats?.totalCalls || 0}</span>
-                        </div>
-                        <div class="team-card-stat">
-                            <span class="team-card-stat-label">Prospects</span>
-                            <span class="team-card-stat-value">${stats?.totalProspects || 0}</span>
-                        </div>
-                        <div class="team-card-stat">
-                            <span class="team-card-stat-label">RDV bookés</span>
-                            <span class="team-card-stat-value">${stats?.bookedProspects || 0}</span>
-                        </div>
-                        <div class="team-card-stat">
-                            <span class="team-card-stat-label">Température moy.</span>
-                            <span class="team-card-stat-value">${stats?.avgTemperature || 0}</span>
-                        </div>
-                        <div class="team-card-stat">
-                            <span class="team-card-stat-label">Score BDR</span>
-                            <span class="team-card-stat-value">${stats?.avgBdrScore || 0}/10</span>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }).join('');
+    // Get checked users
+    const checkedUsers = Array.from(document.querySelectorAll('#chartControls input[data-user-id]:checked'))
+        .map(input => parseInt(input.getAttribute('data-user-id')));
 
-        grid.innerHTML = cardsHTML;
+    // Generate date labels for the period (including today)
+    const now = new Date();
+    now.setHours(23, 59, 59, 999); // End of today
+    const dates = [];
+    const labels = [];
 
-        // Add click listeners
-        const cards = grid.querySelectorAll('.team-card');
-        cards.forEach(card => {
-            card.addEventListener('click', () => {
-                const userId = parseInt(card.dataset.userId);
-                this.showUserDetails(userId);
-            });
-        });
+    for (let i = periodDays - 1; i >= 0; i--) {
+        const date = new Date(now);
+        date.setDate(date.getDate() - i);
+        date.setHours(0, 0, 0, 0);
+        dates.push(date);
 
-        // Reinitialize icons
-        if (typeof lucide !== 'undefined') {
-            lucide.createIcons();
+        // Format label (show every N days based on period)
+        let showEvery = 1;
+        if (periodDays > 30) showEvery = 5;
+        else if (periodDays > 14) showEvery = 3;
+        else if (periodDays > 7) showEvery = 2;
+
+        if (i % showEvery === 0 || i === periodDays - 1) {
+            labels.push(`${date.getDate()}/${date.getMonth() + 1}`);
+        } else {
+            labels.push('');
         }
     }
 
-    getInitials(firstName, lastName) {
-        const first = firstName?.charAt(0)?.toUpperCase() || '';
-        const last = lastName?.charAt(0)?.toUpperCase() || '';
-        return first + last || '?';
-    }
+    const datasets = [];
+    const colors = ['#19273A', '#006EFF', '#22C55E', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6'];
 
-    async showUserDetails(userId) {
-        const user = this.allUsers.find(u => u.id === userId);
+    checkedUsers.forEach((userId, index) => {
+        const user = allUsersData.find(u => u.id === userId);
         if (!user) return;
 
-        const stats = this.usersStats.get(userId);
-        const modal = document.getElementById('userDetailsModal');
-        const modalBody = document.getElementById('userDetailsModalBody');
+        const userName = `${user.first_name} ${user.last_name}`;
+        const color = colors[index % colors.length];
+        const userCalls = allCallsData.filter(call => call.user_id === userId);
 
-        if (!modal || !modalBody) return;
+        // Calculate data for each day
+        const dailyData = {
+            total: [],
+            rdv: [],
+            answered: []
+        };
 
-        const fullName = `${user.first_name} ${user.last_name}`;
-        const initials = this.getInitials(user.first_name, user.last_name);
+        dates.forEach(date => {
+            const nextDay = new Date(date);
+            nextDay.setDate(date.getDate() + 1);
 
-        // Get latest BDR performance from calls
-        const callsWithPerformance = stats.calls.filter(c => c.bdr_performance && c.bdr_performance.overall_score);
-        const latestPerformance = callsWithPerformance.length > 0 ? callsWithPerformance[0].bdr_performance : null;
-
-        let performanceHTML = '';
-        if (latestPerformance) {
-            const criteriaScores = latestPerformance.criteria_scores || {};
-            const scores = Object.entries(criteriaScores);
-
-            // Find best and worst scores
-            let maxScore = -1, minScore = 11;
-            scores.forEach(([_, score]) => {
-                if (score > maxScore) maxScore = score;
-                if (score < minScore) minScore = score;
+            const dayCalls = userCalls.filter(call => {
+                const callDate = new Date(call.date);
+                return callDate >= date && callDate < nextDay;
             });
 
-            const criteriaLabels = {
-                'rapport_building': 'Rapport Building',
-                'needs_discovery': 'Découverte des besoins',
-                'objection_handling': 'Gestion des objections',
-                'pitch_clarity': 'Clarté du pitch',
-                'closing_effort': 'Effort de closing'
-            };
+            // Count total
+            dailyData.total.push(dayCalls.length);
 
-            performanceHTML = `
-                <div class="performance-section">
-                    <h4><i data-lucide="award"></i> Évaluation BDR</h4>
-                    <div class="performance-overall">
-                        <span class="performance-overall-label">Score global</span>
-                        <span class="performance-overall-value">${latestPerformance.overall_score}/10</span>
-                    </div>
-                    <div class="performance-criteria">
-                        ${scores.map(([key, score]) => {
-                            let scoreClass = '';
-                            if (score === maxScore && maxScore !== minScore) scoreClass = 'best';
-                            if (score === minScore && maxScore !== minScore) scoreClass = 'worst';
+            // Count RDV
+            const rdvCount = dayCalls.filter(call => call.booked === true).length;
+            dailyData.rdv.push(rdvCount);
 
-                            return `
-                                <div class="performance-criterion ${scoreClass}">
-                                    <span class="performance-criterion-label">${criteriaLabels[key] || key}</span>
-                                    <span class="performance-criterion-score">${score}/10</span>
-                                </div>
-                            `;
-                        }).join('')}
-                    </div>
-                    ${latestPerformance.strengths && latestPerformance.strengths.length > 0 ? `
-                        <div class="performance-strengths">
-                            <h5><i data-lucide="check-circle"></i> Points forts</h5>
-                            <ul>
-                                ${latestPerformance.strengths.map(s => `<li>${s}</li>`).join('')}
-                            </ul>
-                        </div>
-                    ` : ''}
-                    ${latestPerformance.improvement_areas && latestPerformance.improvement_areas.length > 0 ? `
-                        <div class="performance-improvements">
-                            <h5><i data-lucide="alert-circle"></i> Axes d'amélioration</h5>
-                            <ul>
-                                ${latestPerformance.improvement_areas.map(i => `<li>${i}</li>`).join('')}
-                            </ul>
-                        </div>
-                    ` : ''}
-                </div>
-            `;
+            // Count answered
+            const answeredCount = dayCalls.filter(call => {
+                const status = call.status?.toLowerCase() || '';
+                return status !== 'no_answer' && status !== 'pas de réponse' && status !== 'non décroché';
+            }).length;
+            dailyData.answered.push(answeredCount);
+        });
+
+        // Add datasets based on checkboxes
+        if (showTotal) {
+            datasets.push({
+                label: `${userName} (Total)`,
+                data: dailyData.total,
+                borderColor: color,
+                backgroundColor: `${color}20`,
+                borderWidth: 2,
+                pointRadius: 2,
+                pointHoverRadius: 4,
+                tension: 0.4,
+                fill: false
+            });
         }
 
-        // Generate call history
-        const callsHistoryHTML = await this.generateCallHistory(stats.calls);
+        if (showRdv) {
+            datasets.push({
+                label: `${userName} (RDV)`,
+                data: dailyData.rdv,
+                borderColor: color,
+                borderWidth: 2,
+                pointRadius: 2,
+                pointHoverRadius: 4,
+                tension: 0.4,
+                borderDash: [5, 5]
+            });
+        }
 
-        modalBody.innerHTML = `
-            <div class="user-details-header">
-                <div class="user-details-avatar">
-                    ${user.avatar_url ?
-                        `<img src="${user.avatar_url}" alt="${fullName}">` :
-                        `<div class="user-details-avatar-initials">${initials}</div>`
-                    }
-                </div>
-                <div class="user-details-info">
-                    <h3>${fullName}</h3>
-                    <span class="user-details-role">${user.role}</span>
-                    ${user.mission ? `<p class="user-details-mission">${user.mission}</p>` : ''}
-                </div>
+        if (showAnswered) {
+            datasets.push({
+                label: `${userName} (Décrochés)`,
+                data: dailyData.answered,
+                borderColor: color,
+                borderWidth: 1.5,
+                pointRadius: 1,
+                pointHoverRadius: 3,
+                tension: 0.4,
+                borderDash: [2, 2]
+            });
+        }
+    });
+
+    mainChart.data.labels = labels;
+    mainChart.data.datasets = datasets;
+    mainChart.update();
+
+    console.log(`✅ [CHART] Chart updated with ${datasets.length} datasets`);
+}
+
+// Render top performers leaderboard
+function renderTopPerformers() {
+    console.log('🏆 [ANALYTICS] Rendering top performers...');
+
+    const leaderboardContainer = document.getElementById('leaderboardContainer');
+    if (!leaderboardContainer) {
+        console.error('❌ [ANALYTICS] Leaderboard container not found!');
+        return;
+    }
+
+    // Calculate total calls for each user and sort
+    const usersWithCalls = allUsersData.map(user => {
+        const userCalls = allCallsData.filter(call => call.user_id === user.id);
+        console.log(`  🔍 User ${user.first_name} ${user.last_name} (ID: ${user.id}): ${userCalls.length} calls`);
+        return {
+            ...user,
+            totalCalls: userCalls.length
+        };
+    }).filter(user => user.totalCalls > 0)
+      .sort((a, b) => b.totalCalls - a.totalCalls)
+      .slice(0, 3);
+
+    console.log('🥇 [ANALYTICS] Top 3 performers:', usersWithCalls);
+
+    if (usersWithCalls.length === 0) {
+        leaderboardContainer.innerHTML = '<p style="text-align: center; color: #64748b;">Aucune donnée disponible</p>';
+        return;
+    }
+
+    const rankClasses = ['rank-1', 'rank-2', 'rank-3'];
+
+    leaderboardContainer.innerHTML = usersWithCalls.map((user, index) => `
+        <div class="leader-card">
+            <div class="leader-rank ${rankClasses[index]}">${index + 1}</div>
+            <img src="${user.avatar_url || 'assets/default.webp'}" class="leader-avatar" alt="${user.first_name}">
+            <div class="leader-info">
+                <h4>${user.first_name} ${user.last_name}</h4>
+                <div class="leader-stat"><strong>${user.totalCalls}</strong> appels</div>
             </div>
+        </div>
+    `).join('');
 
-            <div class="user-details-stats-grid">
-                <div class="user-detail-stat">
-                    <i data-lucide="phone"></i>
-                    <div>
-                        <span class="user-detail-stat-value">${stats.totalCalls}</span>
-                        <span class="user-detail-stat-label">Appels passés</span>
-                    </div>
-                </div>
-                <div class="user-detail-stat">
-                    <i data-lucide="users"></i>
-                    <div>
-                        <span class="user-detail-stat-value">${stats.totalProspects}</span>
-                        <span class="user-detail-stat-label">Prospects</span>
-                    </div>
-                </div>
-                <div class="user-detail-stat">
-                    <i data-lucide="calendar"></i>
-                    <div>
-                        <span class="user-detail-stat-value">${stats.bookedProspects}</span>
-                        <span class="user-detail-stat-label">RDV bookés</span>
-                    </div>
-                </div>
-                <div class="user-detail-stat">
-                    <i data-lucide="thermometer"></i>
-                    <div>
-                        <span class="user-detail-stat-value">${stats.avgTemperature}</span>
-                        <span class="user-detail-stat-label">Température moy.</span>
-                    </div>
-                </div>
-                <div class="user-detail-stat">
-                    <i data-lucide="trending-up"></i>
-                    <div>
-                        <span class="user-detail-stat-value">${stats.rdvRate}%</span>
-                        <span class="user-detail-stat-label">Taux RDV</span>
-                    </div>
-                </div>
-                <div class="user-detail-stat">
-                    <i data-lucide="target"></i>
-                    <div>
-                        <span class="user-detail-stat-value">${stats.conversionRate}%</span>
-                        <span class="user-detail-stat-label">Taux conversion</span>
-                    </div>
-                </div>
-            </div>
+    // Reinitialize icons
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+}
 
-            ${performanceHTML}
+// Render BDR list with detailed stats
+function renderBDRList() {
+    console.log('👥 [ANALYTICS] Rendering BDR list...');
+    console.log('📋 [ANALYTICS] Total users to render:', allUsersData.length);
 
-            <div class="call-history-section">
-                <h4><i data-lucide="phone"></i> Historique des appels</h4>
-                ${callsHistoryHTML}
+    const teamList = document.getElementById('teamList');
+    if (!teamList) {
+        console.error('❌ [ANALYTICS] Team list element not found!');
+        return;
+    }
+
+    if (allUsersData.length === 0) {
+        console.warn('⚠️ [ANALYTICS] No users found!');
+        teamList.innerHTML = '<p style="text-align: center; color: #64748b;">Aucun commercial trouvé</p>';
+        return;
+    }
+
+    teamList.innerHTML = allUsersData.map(user => {
+        const stats = calculateUserStats(user.id);
+        const fullName = `${user.first_name} ${user.last_name}`;
+
+        console.log(`  📊 Rendering card for ${fullName}:`, stats);
+
+        return `
+            <div class="bdr-card" onclick="openUserHistory('${user.id}', '${fullName}', '${user.avatar_url || 'assets/default.webp'}')">
+                <div class="bdr-identity">
+                    <div class="bdr-avatar">
+                        <img src="${user.avatar_url || 'assets/default.webp'}" alt="${fullName}">
+                    </div>
+                    <div class="bdr-info">
+                        <h4>${fullName}</h4>
+                        <span>${user.email || 'Commercial'}</span>
+                    </div>
+                </div>
+
+                <div class="bdr-stats-row">
+                    <div class="bdr-stat-box">
+                        <span class="stat-label">Semaine</span>
+                        <span class="stat-val">${stats.callsThisWeek}</span>
+                    </div>
+                    <div class="bdr-stat-box">
+                        <span class="stat-label">Mois</span>
+                        <span class="stat-val">${stats.callsThisMonth}</span>
+                    </div>
+                    <div class="bdr-stat-box">
+                        <span class="stat-label">Total</span>
+                        <span class="stat-val">${stats.totalCalls}</span>
+                    </div>
+                    <div class="bdr-stat-box">
+                        <span class="stat-label">Taux RDV</span>
+                        <span class="stat-val" style="color: #10b981;">${stats.rdvRate}%</span>
+                    </div>
+                    <div class="bdr-stat-box">
+                        <span class="stat-label">Taux Réponse</span>
+                        <span class="stat-val">${stats.answerRate}%</span>
+                    </div>
+                </div>
             </div>
         `;
+    }).join('');
 
-        // Show modal
-        modal.classList.add('active');
-
-        // Reinitialize icons
-        if (typeof lucide !== 'undefined') {
-            lucide.createIcons();
-        }
-
-        // Add event listeners for transcript buttons
-        const transcriptButtons = modalBody.querySelectorAll('.view-transcript-btn');
-        transcriptButtons.forEach(btn => {
-            btn.addEventListener('click', () => {
-                const callId = parseInt(btn.dataset.callId);
-                const call = stats.calls.find(c => c.id === callId);
-                if (call) {
-                    this.showTranscript(call);
-                }
-            });
-        });
+    // Reinitialize icons
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
     }
+}
 
-    async generateCallHistory(calls) {
-        if (!calls || calls.length === 0) {
-            return `
-                <div class="empty-state">
-                    <i data-lucide="phone-off"></i>
-                    <p>Aucun appel enregistré</p>
-                </div>
-            `;
-        }
+// Open user call history modal
+async function openUserHistory(userId, userName, avatarUrl) {
+    const modal = document.getElementById('detailModal');
+    const modalName = document.getElementById('modalName');
+    const modalAvatar = document.getElementById('modalAvatar');
+    const modalContent = document.getElementById('modalContent');
 
-        // Group by date
-        const callsByDate = {};
-        calls.forEach(call => {
-            const date = new Date(call.date).toISOString().split('T')[0];
-            if (!callsByDate[date]) {
-                callsByDate[date] = [];
-            }
-            callsByDate[date].push(call);
-        });
+    if (!modal || !modalName || !modalAvatar || !modalContent) return;
 
-        const sortedDates = Object.keys(callsByDate).sort((a, b) => new Date(b) - new Date(a));
+    // Set modal header
+    modalName.textContent = userName;
+    modalAvatar.src = avatarUrl;
 
-        let html = '<div class="call-history-list">';
+    // Show loading
+    modalContent.innerHTML = '<div style="text-align: center; padding: 2rem;"><div class="loading-spinner"></div></div>';
 
-        for (const dateKey of sortedDates) {
-            const date = new Date(dateKey);
-            const dayName = date.toLocaleDateString('fr-FR', { weekday: 'long' });
-            const dateFormatted = date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+    // Show modal
+    modal.classList.add('active');
 
-            html += `
-                <div class="call-history-date-group">
-                    <div class="call-history-date-header">
-                        <h5>${dayName.charAt(0).toUpperCase() + dayName.slice(1)} ${dateFormatted}</h5>
-                        <span class="call-history-date-count">${callsByDate[dateKey].length} appel${callsByDate[dateKey].length > 1 ? 's' : ''}</span>
-                    </div>
-            `;
+    try {
+        // Get user calls
+        const userCalls = allCallsData
+            .filter(call => call.user_id === parseInt(userId))
+            .sort((a, b) => new Date(b.date) - new Date(a.date))
+            .slice(0, 20); // Show last 20 calls
 
-            for (const call of callsByDate[dateKey]) {
-                // Get prospect info
-                let prospectName = 'Prospect inconnu';
-                if (call.prospect_id) {
-                    const { data: prospect } = await this.supabase
-                        .from('crm_prospects')
-                        .select('first_name, last_name, society')
-                        .eq('id', call.prospect_id)
-                        .single();
-
-                    if (prospect) {
-                        prospectName = `${prospect.first_name || ''} ${prospect.last_name || ''}`.trim() || 'Prospect inconnu';
-                        if (prospect.society) {
-                            prospectName += ` - ${prospect.society}`;
-                        }
-                    }
-                }
-
-                const callTime = new Date(call.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-                const duration = call.duration ? `${Math.floor(call.duration / 60)}min` : '-';
-
-                let statusBadge = '';
-                let statusClass = '';
-                if (call.booked) {
-                    statusBadge = 'RDV Booké';
-                    statusClass = 'status-booked';
-                } else if (call.deposit_type === 'recorded' || call.deposit_type === 'not_recorded') {
-                    statusBadge = 'Décroché';
-                    statusClass = 'status-contacted';
-                } else if (call.deposit_type === 'no_contact') {
-                    statusBadge = 'Pas de réponse';
-                    statusClass = 'status-no-response';
-                } else {
-                    statusBadge = 'Autre';
-                    statusClass = 'status-other';
-                }
-
-                html += `
-                    <div class="call-history-item ${statusClass}">
-                        <div class="call-history-item-header">
-                            <div class="call-history-item-time">
-                                <i data-lucide="clock"></i>
-                                <span>${callTime}</span>
-                            </div>
-                            <span class="call-history-status-badge ${statusClass}">${statusBadge}</span>
-                        </div>
-                        <div class="call-history-item-prospect">
-                            <i data-lucide="user"></i>
-                            <strong>${prospectName}</strong>
-                        </div>
-                        <div class="call-history-item-info">
-                            <span><i data-lucide="timer"></i> ${duration}</span>
-                            ${call.temperature ? `<span><i data-lucide="thermometer"></i> ${call.temperature}</span>` : ''}
-                        </div>
-                        ${call.resume ? `
-                            <div class="call-history-item-resume">
-                                <p>${call.resume}</p>
-                            </div>
-                        ` : ''}
-                        ${call.transcription ? `
-                            <button class="view-transcript-btn" data-call-id="${call.id}">
-                                <i data-lucide="file-text"></i>
-                                Voir la transcription
-                            </button>
-                        ` : ''}
-                    </div>
-                `;
-            }
-
-            html += '</div>';
-        }
-
-        html += '</div>';
-        return html;
-    }
-
-    showTranscript(call) {
-        const modal = document.getElementById('transcriptModal');
-        const modalBody = document.getElementById('transcriptModalBody');
-
-        if (!modal || !modalBody) return;
-
-        if (!call.transcription) {
-            modalBody.innerHTML = `
-                <div class="empty-state">
-                    <i data-lucide="file-text"></i>
-                    <p>Aucune transcription disponible</p>
-                </div>
-            `;
-            modal.classList.add('active');
-            if (typeof lucide !== 'undefined') {
-                lucide.createIcons();
-            }
+        if (userCalls.length === 0) {
+            modalContent.innerHTML = '<p style="text-align: center; color: #64748b; padding: 2rem;">Aucun appel trouvé</p>';
             return;
         }
 
-        // Format transcription with highlighted speakers
-        const formattedTranscript = this.formatTranscript(call.transcription);
+        // Get unique prospect IDs
+        const prospectIds = [...new Set(userCalls.map(call => call.prospect_id).filter(id => id))];
 
-        modalBody.innerHTML = `
-            <div class="transcript-content">
-                ${formattedTranscript}
-            </div>
-        `;
+        console.log(`📞 [ANALYTICS] Loading ${prospectIds.length} prospects for user history...`);
 
-        modal.classList.add('active');
+        // Fetch prospects data
+        let prospectsMap = {};
+        if (prospectIds.length > 0) {
+            const { data: prospects, error } = await window.supabaseClient
+                .from('crm_prospects')
+                .select('id, first_name, last_name, society')
+                .in('id', prospectIds);
+
+            if (error) {
+                console.error('❌ [ANALYTICS] Error loading prospects:', error);
+            } else {
+                prospects?.forEach(p => {
+                    prospectsMap[p.id] = p;
+                });
+                console.log(`✅ [ANALYTICS] Loaded ${Object.keys(prospectsMap).length} prospects`);
+            }
+        }
+
+        // Render calls with prospect info
+        modalContent.innerHTML = userCalls.map(call => {
+            const prospect = prospectsMap[call.prospect_id];
+            return renderCallDetail(call, prospect);
+        }).join('');
 
         // Reinitialize icons
         if (typeof lucide !== 'undefined') {
             lucide.createIcons();
         }
+    } catch (error) {
+        console.error('❌ [ANALYTICS] Error loading call history:', error);
+        modalContent.innerHTML = '<p style="text-align: center; color: #ef4444; padding: 2rem;">Erreur lors du chargement de l\'historique</p>';
+    }
+}
+
+// Render a single call detail
+function renderCallDetail(call, prospect = null) {
+    const callDate = new Date(call.date);
+    const dateStr = formatCallDate(callDate);
+    const duration = formatDuration(call.duration);
+    const status = call.status || 'Non défini';
+    const depositType = call.deposit_type || 'not_recorded';
+
+    // Format prospect info
+    let prospectInfo = '';
+    if (prospect) {
+        const prospectName = [prospect.first_name, prospect.last_name].filter(Boolean).join(' ') || 'Prospect';
+        const prospectCompany = prospect.society ? ` - ${prospect.society}` : '';
+        prospectInfo = `<span style="font-weight: 600; color: var(--text-primary);">${prospectName}</span>${prospectCompany}`;
+    } else {
+        prospectInfo = '<span style="color: #94a3b8; font-style: italic;">Prospect non identifié</span>';
     }
 
-    formatTranscript(transcription) {
-        // Split by lines
-        const lines = transcription.split('\n');
+    // Si no_contact, affichage compact
+    if (depositType === 'no_contact') {
+        return `
+            <div class="call-detail-card-compact" style="border: 1px solid #e2e8f0; border-radius: 10px; padding: 0.75rem 1rem; margin-bottom: 0.75rem; background: #f8fafc; display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; align-items: center; gap: 1rem; flex: 1;">
+                    <i data-lucide="phone-off" style="width: 16px; height: 16px; color: #94a3b8; flex-shrink: 0;"></i>
+                    <div style="display: flex; flex-direction: column; gap: 0.25rem; flex: 1;">
+                        <div style="display: flex; align-items: center; gap: 0.75rem;">
+                            <span style="font-size: 0.875rem; color: var(--text-secondary);">${dateStr}</span>
+                            <span style="font-size: 0.75rem; color: #94a3b8;">Pas de réponse</span>
+                        </div>
+                        <div style="font-size: 0.75rem; color: #64748b;">
+                            ${prospectInfo}
+                        </div>
+                    </div>
+                </div>
+                <span style="font-size: 0.75rem; color: #94a3b8; flex-shrink: 0;"><i data-lucide="clock" style="width: 12px; height: 12px; vertical-align: middle;"></i> ${duration}</span>
+            </div>
+        `;
+    }
 
-        let html = '';
-        lines.forEach(line => {
-            const trimmedLine = line.trim();
-            if (!trimmedLine) return;
+    // Determine status color and background
+    let statusColor = '#64748b';
+    let statusBg = 'rgba(100, 116, 139, 0.1)';
 
-            // Check if line starts with BDR: or BDR :
-            if (trimmedLine.startsWith('BDR:') || trimmedLine.startsWith('BDR :')) {
-                const text = trimmedLine.replace(/^BDR\s*:\s*/, '');
-                html += `
-                    <div class="transcript-line transcript-bdr">
-                        <span class="transcript-speaker">BDR:</span>
-                        <span class="transcript-text">${text}</span>
+    if (call.booked) {
+        statusColor = '#10b981';
+        statusBg = 'rgba(16, 185, 129, 0.1)';
+    } else if (call.status?.toLowerCase().includes('réponse') || call.status?.toLowerCase().includes('décroché')) {
+        statusColor = '#64748b';
+        statusBg = 'rgba(100, 116, 139, 0.1)';
+    } else {
+        statusColor = '#ef4444';
+        statusBg = 'rgba(239, 68, 68, 0.1)';
+    }
+
+    // Badge pour le type d'enregistrement
+    let recordBadge = '';
+    if (depositType === 'recorded') {
+        recordBadge = '<span style="display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.75rem; color: #10b981; background: rgba(16, 185, 129, 0.1); padding: 0.25rem 0.5rem; border-radius: 6px; margin-left: 0.5rem;"><i data-lucide="mic" style="width: 12px; height: 12px;"></i> Enregistré</span>';
+    } else if (depositType === 'not_recorded') {
+        recordBadge = '<span style="display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.75rem; color: #94a3b8; background: rgba(148, 163, 184, 0.1); padding: 0.25rem 0.5rem; border-radius: 6px; margin-left: 0.5rem;"><i data-lucide="mic-off" style="width: 12px; height: 12px;"></i> Non enregistré</span>';
+    }
+
+    let html = `
+        <div class="call-detail-card">
+            <div style="background:#f8fafc; padding:1rem 1.5rem; border-bottom:1px solid #e2e8f0;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem;">
+                    <div style="flex: 1;">
+                        <div style="font-size: 0.875rem; color: #64748b; margin-bottom: 0.25rem;">
+                            ${prospectInfo}
+                        </div>
+                        <div style="font-size:1rem;">
+                            <span style="font-weight:700; color:var(--text-primary);">${dateStr}</span>
+                            <span style="margin-left:0.75rem; color:var(--text-secondary); font-size:0.9rem;"><i data-lucide="clock" style="width:14px; height:14px; vertical-align:middle;"></i> ${duration}</span>
+                            ${recordBadge}
+                        </div>
                     </div>
-                `;
+                    <span style="color:${statusColor}; background:${statusBg}; padding:0.35rem 0.75rem; border-radius:8px; font-weight:600; font-size:0.85rem; white-space: nowrap;">
+                        ${status}
+                    </span>
+                </div>
+            </div>
+            <div style="padding: 1.5rem;">
+    `;
+
+    // Add resume if available
+    if (call.resume) {
+        html += `
+            <div class="call-summary-text">
+                <strong>Résumé :</strong> ${call.resume}
+            </div>
+        `;
+    }
+
+    // Add BDR performance JSON if available
+    if (call.bdr_performance) {
+        try {
+            const perfData = typeof call.bdr_performance === 'string'
+                ? JSON.parse(call.bdr_performance)
+                : call.bdr_performance;
+
+            html += `
+                <div style="margin-top: 1.5rem;">
+                    <div class="json-header">
+                        <span style="font-weight:600; font-size:1rem; color:var(--text-primary);">Qualité d'appel</span>
+                        <div class="json-score-box">${perfData.overall_score || 0}/5</div>
+                    </div>
+            `;
+
+            // Add criteria scores if available
+            if (perfData.criteria_scores) {
+                const criteriaLabels = {
+                    'rapport_building': 'Relationnel',
+                    'needs_discovery': 'Découverte',
+                    'objection_handling': 'Objections',
+                    'pitch_clarity': 'Clarté',
+                    'closing_effort': 'Closing'
+                };
+
+                html += `<div class="criteria-grid">`;
+
+                for (const [key, score] of Object.entries(perfData.criteria_scores)) {
+                    const label = criteriaLabels[key] || key;
+                    const percentage = (score / 5) * 100;
+
+                    html += `
+                        <div class="criterion-box">
+                            <span class="criterion-name">${label}</span>
+                            <div class="progress-bg">
+                                <div class="progress-fill" style="width: ${percentage}%;"></div>
+                            </div>
+                            <span class="criterion-val">${score}/5</span>
+                        </div>
+                    `;
+                }
+
+                html += `</div>`;
             }
-            // Check if line starts with Prospect: or Prospect :
-            else if (trimmedLine.startsWith('Prospect:') || trimmedLine.startsWith('Prospect :')) {
-                const text = trimmedLine.replace(/^Prospect\s*:\s*/, '');
-                html += `
-                    <div class="transcript-line transcript-prospect">
-                        <span class="transcript-speaker">Prospect:</span>
-                        <span class="transcript-text">${text}</span>
-                    </div>
-                `;
-            }
-            // Other lines
-            else {
-                html += `
-                    <div class="transcript-line">
-                        <span class="transcript-text">${trimmedLine}</span>
-                    </div>
-                `;
+
+            html += `</div>`;
+        } catch (error) {
+            console.error('Error parsing bdr_performance JSON:', error);
+        }
+    }
+
+    // Add transcription if available
+    if (call.transcription) {
+        html += `
+            <div class="transcript-section">
+                <button class="transcript-toggle" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'block' ? 'none' : 'block'; event.stopPropagation();">
+                    <span><i data-lucide="align-left" style="width:18px; height:18px; vertical-align:middle;"></i> Transcription détaillée</span>
+                    <i data-lucide="chevron-down" style="width:18px; height:18px;"></i>
+                </button>
+                <div class="transcript-content">${call.transcription}</div>
+            </div>
+        `;
+    }
+
+    html += `</div></div>`;
+
+    return html;
+}
+
+// Format call date
+function formatCallDate(date) {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const callDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+    const timeStr = date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+
+    if (callDay.getTime() === today.getTime()) {
+        return `Aujourd'hui ${timeStr}`;
+    } else if (callDay.getTime() === yesterday.getTime()) {
+        return `Hier ${timeStr}`;
+    } else {
+        return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) + ` ${timeStr}`;
+    }
+}
+
+// Format duration in seconds to readable format
+function formatDuration(seconds) {
+    if (!seconds) return '0s';
+
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+
+    if (mins > 0) {
+        return `${mins}m ${secs}s`;
+    }
+    return `${secs}s`;
+}
+
+// Close modal
+function closeAnalyticsModal() {
+    const modal = document.getElementById('detailModal');
+    if (modal) {
+        modal.classList.remove('active');
+    }
+}
+
+// Setup modal close handlers
+document.addEventListener('DOMContentLoaded', () => {
+    // Close modal button
+    const closeBtn = document.getElementById('closeDetailModal');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', closeAnalyticsModal);
+    }
+
+    // Close on overlay click
+    const modal = document.getElementById('detailModal');
+    if (modal) {
+        modal.addEventListener('click', (event) => {
+            if (event.target === modal) {
+                closeAnalyticsModal();
             }
         });
-
-        return html;
     }
-}
-
-// Initialize Analytics when needed
-function initializeAnalyticsIfNeeded() {
-    if (!window.analyticsManager && document.getElementById('analyticsContent')) {
-        console.log('Initializing Analytics Manager...');
-        window.analyticsManager = new AnalyticsManager();
-    }
-}
-
-// Initialize on page load if analytics is visible
-document.addEventListener('DOMContentLoaded', function() {
-    initializeAnalyticsIfNeeded();
 });
 
-// Make the function globally available
+// Make functions globally available
 window.initializeAnalyticsIfNeeded = initializeAnalyticsIfNeeded;
+window.updateMainChart = updateMainChart;
+window.openUserHistory = openUserHistory;
+window.closeAnalyticsModal = closeAnalyticsModal;
+
+console.log('Analytics module loaded (full version with Supabase integration)');

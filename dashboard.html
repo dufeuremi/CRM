@@ -12,8 +12,8 @@
     <!-- Cache Buster pour forcer le rechargement des fichiers CSS/JS -->
     <script src="cache-buster.js"></script>
     <script>
-        // Changez ce numéro de version à chaque mise à jour de vos fichiers
-        CacheBuster.config.version = '1.0.0';
+        // Version automatique basée sur le timestamp pour forcer le refresh à chaque reload
+        CacheBuster.config.version = Date.now();
         CacheBuster.init();
     </script>
 
@@ -263,272 +263,65 @@
                     <div class="analytics-loading" id="analyticsLoading" style="display: flex;">
                         <div class="loading-spinner"></div>
                     </div>
-                    
+
                     <div class="analytics-content" id="analyticsContent" style="display: none;">
-                        <!-- Sélecteur d'utilisateur -->
-                        <!-- Tableau comparatif des utilisateurs -->
-                        <div class="analytics-comparison-section">
-                            <div class="analytics-section-header">
-                                <div>
-                                    <h3><i data-lucide="users"></i> Comparaison des performances</h3>
-                                    <p>Comparez les performances de tous les commerciaux sur la période sélectionnée</p>
-                                </div>
-                                <div class="comparison-controls">
-                                    <button class="btn btn-secondary" id="selectAllUsers">Tout sélectionner</button>
-                                    <button class="btn btn-secondary" id="unselectAllUsers">Tout désélectionner</button>
-                                </div>
+                        <!-- 1. KPI GLOBAUX -->
+                        <div class="analytics-section">
+                            <div class="analytics-section-header" style="margin-bottom: 1.5rem;">
+                                <h3><i data-lucide="bar-chart-3"></i> Performance Globale</h3>
                             </div>
-
-                            <!-- Filtres de période et utilisateurs -->
-                            <div class="analytics-filters">
-                                <div class="analytics-filters-row">
-                                    <div class="user-filter-container">
-                                        <label for="userFilter" class="form-label">Analyser l'utilisateur :</label>
-                                        <select id="userFilter" class="form-select">
-                                            <option value="">Choisir un utilisateur...</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                
-                                <div class="analytics-filters-row">
-                                    <div class="date-filter-shortcuts">
-                                        <button class="date-shortcut-btn" data-days="1">24h</button>
-                                        <button class="date-shortcut-btn" data-days="7">7 jours</button>
-                                        <button class="date-shortcut-btn" data-days="30">30 jours</button>
-                                        <button class="date-shortcut-btn" data-days="60">60 jours</button>
-                                        <button class="date-shortcut-btn" data-days="90">90 jours</button>
-                                    </div>
-                                    
-                                    <div class="date-range-container">
-                                        <div class="date-filter-container">
-                                            <label for="startDateFilter" class="form-label"></label>
-                                            <input type="date" id="startDateFilter" class="form-input">
-                                        </div>
-                                        <div class="date-filter-container">
-                                            <label for="endDateFilter" class="form-label"></label>
-                                            <input type="date" id="endDateFilter" class="form-input">
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="filter-actions">
-                                        <button class="btn btn-primary" id="applyFilters">Appliquer</button>
-                                        <button class="btn btn-secondary" id="resetFilters">Réinitialiser</button>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <!-- Graphique de comparaison -->
-                            <div class="chart-container">
-                                <div class="chart-header">
-                                    <h3>Évolution comparative des performances</h3>
-                                    <div class="stats-controls">
-                                        <div class="stats-period-selector">
-                                            <label for="comparisonPeriod">Période:</label>
-                                            <select id="comparisonPeriod" class="stats-period-select">
-                                                <option value="all">Depuis le début</option>
-                                                <option value="7">7 derniers jours</option>
-                                                <option value="30" selected>30 derniers jours</option>
-                                                <option value="90">90 derniers jours</option>
-                                            </select>
-                                        </div>
-                                        <div class="stats-toggles">
-                                            <label class="stats-toggle-item">
-                                                <input type="checkbox" id="toggleComparisonCalls" checked>
-                                                <span class="toggle-label">Nombre d'appels</span>
-                                            </label>
-                                            <label class="stats-toggle-item">
-                                                <input type="checkbox" id="toggleComparisonAnswered" checked>
-                                                <span class="toggle-label">Appels décrochés</span>
-                                            </label>
-                                            <label class="stats-toggle-item">
-                                                <input type="checkbox" id="toggleComparisonMeetings" checked>
-                                                <span class="toggle-label">RDV obtenus</span>
-                                            </label>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div id="comparisonChartEmpty" class="chart-empty-state" style="display: none;">
-                                    <div class="chart-empty-icon">
-                                        <i data-lucide="users"></i>
-                                    </div>
-                                    <h4>Sélectionnez des utilisateurs à comparer</h4>
-                                    <p>Cochez les commerciaux dans le tableau ci-dessous pour voir leurs performances comparées.</p>
-                                </div>
-                                <canvas id="comparisonChart"></canvas>
-                            </div>
-                            
-                            <div class="comparison-table-container">
-                                <div class="comparison-loading" id="comparisonLoading" style="display: none;">
-                                    <div class="loading-spinner"></div>
-                                </div>
-                                
-                                <table class="comparison-table" id="comparisonTable">
-                                    <thead>
-                                        <tr>
-                                            <th class="comparison-checkbox-col">
-                                                <input type="checkbox" id="selectAllCheckbox" title="Sélectionner tout">
-                                            </th>
-                                            <th>Commercial</th>
-                                            <th>Appels</th>
-                                            <th>Chaleur moyenne</th>
-                                            <th>Taux de réponse</th>
-                                            <th>Taux de RDV</th>
-                                            <th>Prospects</th>
-                                            <th>Performance</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="comparisonTableBody">
-                                        <tr>
-                                            <td colspan="8" class="comparison-empty">
-                                                <i data-lucide="users"></i>
-                                                <p>Aucune donnée disponible pour cette période</p>
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
+                            <div class="kpi-grid" id="kpiGrid">
+                                <!-- KPIs will be generated by analytics.js -->
                             </div>
                         </div>
 
-                        <!-- Section 1: Pipeline & Conversions -->
+                        <!-- 2. GRAPHIQUE -->
+                        <div class="analytics-section">
+                            <div class="chart-container-analytics">
+                                <!-- Chart controls and canvas will be generated by analytics.js -->
+                            </div>
+                        </div>
+
+                        <!-- 3. TOP PERFORMERS (CRITÈRE : APPELS) -->
                         <div class="analytics-section">
                             <div class="analytics-section-header">
-                                <div>
-                                    <h3><i data-lucide="target"></i> Pipeline & Conversions</h3>
-                                    <p>Suivre l'efficacité du BDR à transformer ses leads</p>
-                                </div>
+                                <h3><i data-lucide="medal"></i> Top Performers (Appels)</h3>
                             </div>
-                            <div class="analytics-grid">
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="user-plus"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="newProspectsCount">0</h4>
-                                        <p>Nouveaux prospects créés</p>
-                                    </div>
-                                </div>
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="check-circle"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="qualificationRate">0%</h4>
-                                        <p>Taux de qualification</p>
-                                    </div>
-                                </div>
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="calendar"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="rdvConversionRate">0%</h4>
-                                        <p>Taux de conversion en RDV</p>
-                                    </div>
-                                </div>
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="dollar-sign"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="clientConversionRate">0%</h4>
-                                        <p>Taux de conversion en client</p>
-                                    </div>
-                                </div>
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="clock"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="avgConversionTime">0j</h4>
-                                        <p>Temps moyen de conversion</p>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="analytics-chart-container">
-                                <div class="chart-header">
-                                    <h3>Funnel de conversion</h3>
-                                </div>
-                                <canvas id="conversionFunnelChart"></canvas>
-                            </div>
-                            <div class="analytics-chart-container">
-                                <div class="chart-header">
-                                    <h3>Nouveaux prospects par jour</h3>
-                                </div>
-                                <canvas id="newProspectsChart"></canvas>
+                            <div class="leaderboard-container" id="leaderboardContainer">
+                                <!-- Leaders will be generated by analytics.js -->
                             </div>
                         </div>
 
-                        <!-- Section 2: Activité d'appels (supprimé Répartition par température) -->
+                        <!-- 4. LISTE BDR -->
                         <div class="analytics-section">
                             <div class="analytics-section-header">
-                                <div>
-                                    <h3><i data-lucide="phone"></i> Activité d'appels</h3>
-                                    <p>Mesurer l'intensité et la qualité de la prospection</p>
-                                </div>
+                                <h3><i data-lucide="users"></i> Détail par Commercial</h3>
                             </div>
-                            <div class="analytics-grid">
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="phone-call"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="callsCount">0</h4>
-                                        <p>Nombre d'appels passés</p>
-                                    </div>
-                                </div>
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="thumbs-up"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="positiveCallsRate">0%</h4>
-                                        <p>% d'appels avec statut positif</p>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="analytics-chart-container">
-                                <div class="chart-header">
-                                    <h3>Appels par jour</h3>
-                                </div>
-                                <canvas id="callsPerDayChart"></canvas>
+                            <div class="team-list" id="teamList">
+                                <!-- BDR cards will be generated by analytics.js -->
                             </div>
                         </div>
+                    </div>
 
-                        <!-- Section 3: Performance individuelle -->
-                        <div class="analytics-section">
-                            <div class="analytics-section-header">
-                                <div>
-                                    <h3><i data-lucide="user"></i> Performance individuelle</h3>
-                                    <p>Évaluer l'efficacité de chaque commercial</p>
+                    <!-- MODAL DETAILS -->
+                    <div class="modal-overlay-analytics" id="detailModal">
+                        <div class="modal-container-analytics">
+                            <div class="modal-header-analytics">
+                                <div style="display:flex; align-items:center; gap:1rem;">
+                                    <img src="" id="modalAvatar" style="width:50px; height:50px; border-radius:10px; border:1px solid #7b90ad; object-fit:cover;">
+                                    <div>
+                                        <h3 id="modalName" style="margin:0; font-size:1.25rem; color: var(--text-primary);">Nom</h3>
+                                        <span style="font-size:0.875rem; color:var(--text-secondary);">Historique des appels</span>
+                                    </div>
                                 </div>
+                                <button class="modal-close-analytics" id="closeDetailModal">
+                                    <i data-lucide="x"></i>
+                                </button>
                             </div>
-                            <div class="analytics-grid">
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="users"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="assignedProspects">0</h4>
-                                        <p>Prospects assignés</p>
-                                    </div>
-                                </div>
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="calendar-check"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="bookedRdv">0</h4>
-                                        <p>RDV bookés</p>
-                                    </div>
-                                </div>
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="phone"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="totalCallsMade">0</h4>
-                                        <p>Appels effectués</p>
-                                    </div>
-                                </div>
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="trending-up"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="globalConversionRate">0%</h4>
-                                        <p>Taux de conversion global</p>
-                                    </div>
-                                </div>
-                                <div class="kpi-card">
-                                    <div class="kpi-icon"><i data-lucide="activity"></i></div>
-                                    <div class="kpi-content">
-                                        <h4 id="followUpRate">0%</h4>
-                                        <p>Taux de suivi</p>
-                                    </div>
-                                </div>
+                            <div id="modalContent" class="modal-content-analytics">
+                                <!-- Call history will be generated by analytics.js -->
                             </div>
                         </div>
-
-
-
                     </div>
                 </section>
 
@@ -823,13 +616,13 @@
         <!-- Agent Right Sidebar -->
         <aside class="agent-sidebar" id="agentSidebar">
             <div class="agent-sidebar-header">
+                <button class="agent-sidebar-close" id="closeAgentSidebar">
+                    <i data-lucide="x"></i>
+                </button>
                 <h3 class="agent-sidebar-title">
                     <i data-lucide="brain"></i>
                     CRM Agent
                 </h3>
-                <button class="agent-sidebar-close" id="closeAgentSidebar">
-                    <i data-lucide="x"></i>
-                </button>
             </div>
             
             <div class="agent-sidebar-content">
@@ -1028,10 +821,6 @@
                             <input type="radio" name="depotStatus" value="no_contact">
                             <span class="depot-option-label">N'a pas décroché</span>
                         </label>
-                        <label class="depot-option" data-value="booked">
-                            <input type="radio" name="depotStatus" value="booked">
-                            <span class="depot-option-label">RDV réservé</span>
-                        </label>
                         <label class="depot-option" data-value="in_app_recording" id="inAppRecordingOption" style="display: none;">
                             <div class="depot-option-header">
                                 <input type="radio" name="depotStatus" value="in_app_recording">
@@ -1142,8 +931,11 @@
     <!-- Record Modal -->
     <div id="recordModal" class="record-modal-overlay">
         <div class="record-modal-content">
+            <button class="record-modal-close" id="closeRecordModal">
+                <i data-lucide="x"></i>
+            </button>
             <div class="record-prospect-name" id="recordProspectName"></div>
-            
+
             <div class="record-source-dropdown">
                 <button class="record-source-btn" id="recordSourceBtn">
                     <span id="recordSourceText">Source</span>
@@ -1239,6 +1031,59 @@
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" id="closeProspectDetails">Fermer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Firm Modal -->
+    <div id="editFirmModal" class="modal-overlay">
+        <div class="modal-content modal-content-small">
+            <div class="modal-header">
+                <h3 class="modal-title">Modifier le nom de l'entreprise</h3>
+                <button class="modal-close" id="closeEditFirmModal">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="editFirmForm">
+                    <div class="form-group">
+                        <label for="editFirmName" class="form-label">Nouveau nom</label>
+                        <input type="text" id="editFirmName" class="form-input" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelEditFirm">Annuler</button>
+                <button class="btn btn-primary" id="confirmEditFirm">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Transfer Task Modal -->
+    <div id="transferTaskModal" class="modal-overlay">
+        <div class="modal-content modal-content-small">
+            <div class="modal-header">
+                <h3 class="modal-title">Transférer la tâche</h3>
+                <button class="modal-close" id="closeTransferTaskModal">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 1rem; color: var(--text-secondary); font-size: 0.875rem;">
+                    Sélectionnez l'utilisateur à qui vous souhaitez transférer cette tâche
+                </p>
+                <form id="transferTaskForm">
+                    <div class="form-group">
+                        <label for="transferTaskUser" class="form-label">Utilisateur</label>
+                        <select id="transferTaskUser" class="form-input" required>
+                            <option value="">Sélectionner un utilisateur...</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelTransferTask">Annuler</button>
+                <button class="btn btn-primary" id="confirmTransferTask">Transférer</button>
             </div>
         </div>
     </div>

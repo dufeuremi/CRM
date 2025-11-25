@@ -238,19 +238,36 @@ function switchToSection(sectionId) {
                 const dashboardContent = document.getElementById('dashboardContent');
                 if (dashboardLoading) dashboardLoading.style.display = 'flex';
                 if (dashboardContent) dashboardContent.style.display = 'none';
-                
-                // Load data immediately
-                loadDashboardData().then(() => {
-                    // Hide loading and show content when data is loaded
-                    if (dashboardLoading) dashboardLoading.style.display = 'none';
-                    if (dashboardContent) dashboardContent.style.display = 'block';
-                    // Re-animate stats to show the animation on menu click
-                    setTimeout(() => reanimateStats(), 100);
-                }).catch(() => {
-                    // Hide loading even on error
-                    if (dashboardLoading) dashboardLoading.style.display = 'none';
-                    if (dashboardContent) dashboardContent.style.display = 'block';
-                });
+
+                // Wait for user to be loaded before loading dashboard data
+                const waitForUser = setInterval(() => {
+                    if (window.supabaseClient && window.currentUserId) {
+                        clearInterval(waitForUser);
+
+                        // Load data
+                        loadDashboardData().then(() => {
+                            // Hide loading and show content when data is loaded
+                            if (dashboardLoading) dashboardLoading.style.display = 'none';
+                            if (dashboardContent) dashboardContent.style.display = 'block';
+                            // Re-animate stats to show the animation on menu click
+                            setTimeout(() => reanimateStats(), 100);
+                        }).catch(() => {
+                            // Hide loading even on error
+                            if (dashboardLoading) dashboardLoading.style.display = 'none';
+                            if (dashboardContent) dashboardContent.style.display = 'block';
+                        });
+                    }
+                }, 100);
+
+                // Timeout after 10 seconds
+                setTimeout(() => {
+                    clearInterval(waitForUser);
+                    // If still not loaded after timeout, show content anyway
+                    if (dashboardLoading && dashboardLoading.style.display === 'flex') {
+                        if (dashboardLoading) dashboardLoading.style.display = 'none';
+                        if (dashboardContent) dashboardContent.style.display = 'block';
+                    }
+                }, 10000);
             }
             
             // Load prospects if prospects section is shown
@@ -299,13 +316,25 @@ function switchToSection(sectionId) {
             
             // Load analytics if analytics section is shown
             if (sectionId === 'analytics') {
-                // Initialize analytics manager if not already done
-                if (window.initializeAnalyticsIfNeeded) {
-                    window.initializeAnalyticsIfNeeded();
-                }
-                if (window.analyticsManager) {
-                    window.analyticsManager.hideAnalyticsLoading();
-                }
+                // Wait for user to be loaded before loading analytics
+                const waitForAnalyticsUser = setInterval(() => {
+                    if (window.supabaseClient && window.currentUserId) {
+                        clearInterval(waitForAnalyticsUser);
+
+                        // Initialize analytics manager if not already done
+                        if (window.initializeAnalyticsIfNeeded) {
+                            window.initializeAnalyticsIfNeeded();
+                        }
+                        if (window.analyticsManager) {
+                            window.analyticsManager.hideAnalyticsLoading();
+                        }
+                    }
+                }, 100);
+
+                // Timeout after 10 seconds
+                setTimeout(() => {
+                    clearInterval(waitForAnalyticsUser);
+                }, 10000);
             }
             
         // Save active section to localStorage
@@ -1878,30 +1907,27 @@ function handleProspectChange(payload) {
 
     console.log(`Prospect ${prospectId} status changed: ${oldStatus} -> ${newStatus}`);
 
-    // Find the prospect row in the table
-    const row = document.querySelector(`tr[data-prospect-id="${prospectId}"]`);
-    if (!row) {
-        console.log('Row not found for prospect:', prospectId);
-        return;
-    }
-
     // Handle different status transitions
     if (newStatus === 'analysing') {
-        // Show loading animation
-        setProspectRowAnalysing(row, true);
-    } else if (newStatus === 'done' && oldStatus === 'analysing') {
-        // Stop loading animation and show success state
-        setProspectRowAnalysing(row, false);
-        setProspectRowDone(row, true);
+        // Show blue border animation
+        setProspectRowDepositing(prospectId, true);
     } else if (newStatus === 'done') {
-        // Direct to done state (without animation first)
-        setProspectRowDone(row, true);
+        // Stop animation and show green checkmark
+        setProspectRowDepositing(prospectId, false);
+        setProspectRowDone(prospectId, true);
     }
 }
 
 // Set prospect row to analysing state (loading animation)
 function setProspectRowAnalysing(row, isAnalysing) {
     if (isAnalysing) {
+        // Remove analysing state from ALL other rows first
+        document.querySelectorAll('tr.prospect-analysing').forEach(r => {
+            if (r !== row) {
+                r.classList.remove('prospect-analysing');
+            }
+        });
+
         row.classList.add('prospect-analysing');
         console.log('✅ Set row to analysing state');
     } else {
@@ -1910,37 +1936,66 @@ function setProspectRowAnalysing(row, isAnalysing) {
     }
 }
 
-// Set prospect row to done state (green border + checkmark)
-function setProspectRowDone(row, isDone) {
+// Set prospect row to done state (green border + replace phone icon with checkmark)
+function setProspectRowDone(prospectId, isDone) {
+    // Find all rows with this prospect ID
+    const prospectRows = document.querySelectorAll(`tr[data-prospect-id="${prospectId}"]`);
+
     if (isDone) {
-        row.classList.add('prospect-done');
-
-        // Add checkmark icon if not already present
-        const firstCell = row.querySelector('td:first-child');
-        if (firstCell && !firstCell.querySelector('.prospect-done-checkmark')) {
-            const checkmark = document.createElement('span');
-            checkmark.className = 'prospect-done-checkmark';
-            checkmark.innerHTML = '<i data-lucide="check-circle"></i>';
-            firstCell.style.position = 'relative';
-            firstCell.insertBefore(checkmark, firstCell.firstChild);
-
-            // Reinitialize Lucide icons
-            if (typeof lucide !== 'undefined') {
-                lucide.createIcons();
+        // Remove done state from ALL other rows first
+        document.querySelectorAll('tr.prospect-done').forEach(r => {
+            const rowProspectId = r.getAttribute('data-prospect-id');
+            if (rowProspectId != prospectId) {
+                r.classList.remove('prospect-done');
+                // Restore phone icon for other rows
+                const phoneIcon = r.querySelector('.called-icon.prospect-done-check');
+                if (phoneIcon) {
+                    phoneIcon.setAttribute('data-lucide', 'phone');
+                    phoneIcon.classList.remove('prospect-done-check');
+                    phoneIcon.classList.add('called-yes');
+                }
             }
-        }
+        });
 
-        console.log('✅ Set row to done state with checkmark');
+        prospectRows.forEach(row => {
+            // Remove animation (already done by setProspectRowDepositing(false))
+            row.classList.add('prospect-done');
+
+            // Replace phone icon with green checkmark
+            const phoneIcon = row.querySelector('.called-icon');
+            if (phoneIcon) {
+                // Change to check-circle icon and add green class
+                phoneIcon.setAttribute('data-lucide', 'check-circle');
+                phoneIcon.classList.remove('called-yes', 'called-no');
+                phoneIcon.classList.add('prospect-done-check');
+
+                // Reinitialize Lucide icons
+                if (typeof lucide !== 'undefined') {
+                    lucide.createIcons();
+                }
+            }
+
+            console.log('✅ Set row to done state with green checkmark replacing phone icon');
+        });
     } else {
-        row.classList.remove('prospect-done');
+        prospectRows.forEach(row => {
+            row.classList.remove('prospect-done');
 
-        // Remove checkmark if present
-        const checkmark = row.querySelector('.prospect-done-checkmark');
-        if (checkmark) {
-            checkmark.remove();
-        }
+            // Restore phone icon
+            const phoneIcon = row.querySelector('.called-icon.prospect-done-check');
+            if (phoneIcon) {
+                phoneIcon.setAttribute('data-lucide', 'phone');
+                phoneIcon.classList.remove('prospect-done-check');
+                phoneIcon.classList.add('called-yes');
 
-        console.log('✅ Removed done state from row');
+                // Reinitialize Lucide icons
+                if (typeof lucide !== 'undefined') {
+                    lucide.createIcons();
+                }
+            }
+
+            console.log('✅ Removed done state from row');
+        });
     }
 }
 
@@ -1962,6 +2017,38 @@ function escapeHTML(value) {
 }
 
 // ================= SCHEDULED EMAILS MANAGEMENT =================
+
+// Normalize email data to handle different field naming conventions
+function normalizeEmailData(email) {
+    // Map between different field names:
+    // body -> html_body
+    // subject -> object
+    // send_date + send_time -> date
+
+    const normalized = { ...email };
+
+    // Map body to html_body (prioritize html_body if exists)
+    if (!normalized.html_body && normalized.body) {
+        normalized.html_body = normalized.body;
+    }
+
+    // Map subject to object (prioritize object if exists)
+    if (!normalized.object && normalized.subject) {
+        normalized.object = normalized.subject;
+    }
+
+    // Map send_date + send_time to date (prioritize date if exists)
+    if (!normalized.date && normalized.send_date) {
+        if (normalized.send_time) {
+            // Combine send_date and send_time into a datetime
+            normalized.date = `${normalized.send_date}T${normalized.send_time}:00`;
+        } else {
+            normalized.date = normalized.send_date;
+        }
+    }
+
+    return normalized;
+}
 
 // Load all scheduled emails from crm_mails_schedule
 async function loadScheduledEmails() {
@@ -2029,22 +2116,23 @@ async function loadScheduledEmails() {
             return;
         }
 
-        allScheduledEmails = data;
+        // Normalize email data to handle different field names
+        allScheduledEmails = data.map(normalizeEmailData);
 
-        console.log('Scheduled emails loaded:', data.length, data);
+        console.log('Scheduled emails loaded:', data.length, allScheduledEmails);
 
-        if (data.length === 0) {
+        if (allScheduledEmails.length === 0) {
             scheduledEmailsContainer.innerHTML = `<div class="mails-empty"><i data-lucide="inbox"></i><h4>Aucun email programmé</h4><p>Les emails programmés apparaîtront ici</p></div>`;
             if (typeof lucide !== 'undefined') lucide.createIcons();
             return;
         }
 
         // Display emails as mail-cards
-        scheduledEmailsContainer.innerHTML = data.map(email => {
+        scheduledEmailsContainer.innerHTML = allScheduledEmails.map(email => {
         const prospect = allProspects.find(p => p.id === email.recipient_id);
         const recipient = prospect ? `${capitalizeFirstLetter(prospect.first_name || '')} ${capitalizeFirstLetter(prospect.last_name || '')}` : email.recipient || 'Destinataire inconnu';
         const recipientEmail = prospect ? prospect.email || '' : email.recipient || '';
-        
+
         // Use 'date' field as send date
         const sendDateObj = email.date ? new Date(email.date) : null;
         const formattedDate = sendDateObj ? sendDateObj.toLocaleDateString('fr-FR', {
@@ -2054,7 +2142,7 @@ async function loadScheduledEmails() {
             hour: '2-digit',
             minute: '2-digit'
         }) : '-';
-        
+
         // Countdown badge
         let countdownBadge = '';
         if (sendDateObj) {
@@ -2070,15 +2158,15 @@ async function loadScheduledEmails() {
                 countdownBadge = `<span class="rappels-days-indicator">➔ Aujourd'hui</span>`;
             }
         }
-        
-        // Use html_body or fallback to empty string
+
+        // Use html_body (normalized from body or html_body)
         const bodyText = email.html_body || '';
         // Extract text from HTML
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = bodyText;
         const textContent = tempDiv.textContent || tempDiv.innerText || '';
         const truncatedContent = textContent.slice(0, 150) + (textContent.length > 150 ? '...' : '');
-        
+
         return `
             <div class="mail-card" data-email-id="${email.id}">
                 <div class="mail-header">
@@ -3447,22 +3535,34 @@ function hideDepotModal() {
     modal.classList.remove('active');
     currentDepotId = null;
     currentRecording = null;
-    
+
     // Remove prospect ID from modal
     if (modal) {
         modal.removeAttribute('data-prospect-id');
     }
-    
+
     // Hide in-app recording option
     const inAppRecordingOption = document.getElementById('inAppRecordingOption');
     if (inAppRecordingOption) {
         inAppRecordingOption.style.display = 'none';
     }
-    
+
     // Hide recording info
     const depotRecordingInfo = document.getElementById('depotRecordingInfo');
     if (depotRecordingInfo) {
         depotRecordingInfo.style.display = 'none';
+    }
+
+    // Remove success class from upload zone
+    const depotUploadZone = document.querySelector('.depot-upload-zone');
+    if (depotUploadZone) {
+        depotUploadZone.classList.remove('success');
+    }
+
+    // Reset upload zone text
+    const uploadText = document.querySelector('.depot-upload-text');
+    if (uploadText) {
+        uploadText.textContent = 'Cliquez pour téléverser ou glissez-déposez le fichier';
     }
 }
 
@@ -3972,8 +4072,8 @@ async function confirmDepot() {
         // Set loading state on depot button FIRST (replaces icon with spinner)
         setDepotButtonLoading(prospectId, true);
 
-        // Start prospect row animation
-        setProspectRowDepositing(prospectId, true);
+        // L'animation de la ligne se déclenchera automatiquement via realtime
+        // quand traitement_status passera à 'analysing'
 
         // Add to pending depots map with timestamp
         pendingDepots.set(prospectId, Date.now());
@@ -4158,8 +4258,15 @@ function fillProspectInfo(prospect) {
     // Format firm display
     let firmDisplay = '-';
     let firmId = null;
+    let firmName = '';
     if (prospect.crm_firmes && prospect.crm_firmes.name) {
-        firmDisplay = `${prospect.crm_firmes.name} <small>(ID: ${prospect.crm_firmes.id})</small>`;
+        firmName = prospect.crm_firmes.name;
+        firmDisplay = `
+            <span class="firm-name-display">${firmName} <small>(ID: ${prospect.crm_firmes.id})</small></span>
+            <button class="firm-edit-btn-detail" data-firm-id="${prospect.crm_firmes.id}" data-firm-name="${firmName}" title="Modifier le nom de l'entreprise">
+                <i data-lucide="edit-2"></i>
+            </button>
+        `;
         firmId = prospect.crm_firmes.id;
     } else if (prospect.firm_id) {
         firmDisplay = `<small>ID: ${prospect.firm_id} (nom non trouvé)</small>`;
@@ -4224,14 +4331,29 @@ function fillProspectInfo(prospect) {
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();
     }
-    
+
     // Add special click event listener for firm field
     const firmField = grid.querySelector('.firm-field');
     if (firmField) {
         firmField.style.cursor = 'pointer';
         firmField.addEventListener('click', async (e) => {
+            // Don't trigger if clicking on edit button
+            if (e.target.closest('.firm-edit-btn-detail')) {
+                return;
+            }
             e.stopPropagation();
             await showFirmEditModal(prospect.id, firmId);
+        });
+    }
+
+    // Add event listener for firm edit button in details
+    const firmEditBtn = grid.querySelector('.firm-edit-btn-detail');
+    if (firmEditBtn) {
+        firmEditBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const btnFirmId = firmEditBtn.getAttribute('data-firm-id');
+            const btnFirmName = firmEditBtn.getAttribute('data-firm-name');
+            openEditFirmModal(btnFirmId, btnFirmName);
         });
     }
     
@@ -4840,32 +4962,55 @@ function initializeFirmSelector() {
     
     function showFirmAutocomplete(searchTerm) {
         const normalizedSearch = normalizeFirmName(searchTerm);
-        const matchingFirms = allFirms.filter(firm => 
+        const matchingFirms = allFirms.filter(firm =>
             normalizeFirmName(firm.name).includes(normalizedSearch)
         ).slice(0, 5); // Limit to 5 results
-        
+
         if (matchingFirms.length === 0) {
             hideFirmDropdown();
             return;
         }
-        
+
         let html = '';
         matchingFirms.forEach((firm, index) => {
             const createdDate = formatFirmCreationDate(firm.created_at);
             html += `
                 <div class="firm-autocomplete-item" data-firm-id="${firm.id}" data-firm-name="${firm.name}">
-                    <div class="firm-name">${firm.name}</div>
-                    <div class="firm-info">Créée le ${createdDate}</div>
+                    <div class="firm-item-content">
+                        <div class="firm-name">${firm.name}</div>
+                        <div class="firm-info">Créée le ${createdDate}</div>
+                    </div>
+                    <button class="firm-edit-btn" data-firm-id="${firm.id}" data-firm-name="${firm.name}" title="Modifier le nom">
+                        <i data-lucide="edit-2"></i>
+                    </button>
                 </div>
             `;
         });
-        
+
         firmDropdown.innerHTML = html;
         firmDropdown.style.display = 'block';
-        
+
+        // Initialize Lucide icons
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
+
         // Add click listeners to items
         firmDropdown.querySelectorAll('.firm-autocomplete-item').forEach(item => {
-            item.addEventListener('click', () => selectFirmFromAutocomplete(item));
+            const contentDiv = item.querySelector('.firm-item-content');
+            if (contentDiv) {
+                contentDiv.addEventListener('click', () => selectFirmFromAutocomplete(item));
+            }
+        });
+
+        // Add click listeners to edit buttons
+        firmDropdown.querySelectorAll('.firm-edit-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const firmId = btn.getAttribute('data-firm-id');
+                const firmName = btn.getAttribute('data-firm-name');
+                openEditFirmModal(firmId, firmName);
+            });
         });
     }
     
@@ -4946,6 +5091,307 @@ function normalizeFirmName(name) {
         .replace(/[ùúûü]/g, 'u')
         .replace(/[ç]/g, 'c')
         .replace(/[ñ]/g, 'n');
+}
+
+// Edit firm modal functions
+let currentEditingFirmId = null;
+
+function openEditFirmModal(firmId, firmName) {
+    currentEditingFirmId = firmId;
+    const modal = document.getElementById('editFirmModal');
+    const input = document.getElementById('editFirmName');
+
+    if (modal && input) {
+        input.value = firmName;
+        modal.classList.add('active');
+
+        // Initialize Lucide icons
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
+
+        // Focus input
+        setTimeout(() => input.focus(), 100);
+    }
+}
+
+function closeEditFirmModal() {
+    const modal = document.getElementById('editFirmModal');
+    if (modal) {
+        modal.classList.remove('active');
+    }
+    currentEditingFirmId = null;
+}
+
+async function saveEditedFirm() {
+    const input = document.getElementById('editFirmName');
+    const newName = input.value.trim();
+
+    if (!newName) {
+        showToast('Le nom de l\'entreprise ne peut pas être vide', 'error');
+        return;
+    }
+
+    if (!currentEditingFirmId) {
+        showToast('Erreur: ID d\'entreprise manquant', 'error');
+        return;
+    }
+
+    try {
+        // Check if firm with new name already exists
+        const normalizedNewName = normalizeFirmName(newName);
+        const existingFirm = allFirms.find(firm =>
+            firm.id !== currentEditingFirmId &&
+            normalizeFirmName(firm.name) === normalizedNewName
+        );
+
+        if (existingFirm) {
+            showToast('Une entreprise avec ce nom existe déjà', 'error');
+            return;
+        }
+
+        // Update firm in database
+        const { data, error } = await supabase
+            .from('crm_firmes')
+            .update({ name: newName })
+            .eq('id', currentEditingFirmId);
+
+        if (error) {
+            console.error('Error updating firm:', error);
+            showToast('Erreur lors de la modification de l\'entreprise', 'error');
+            return;
+        }
+
+        // Update in local array
+        const firmIndex = allFirms.findIndex(f => f.id === currentEditingFirmId);
+        if (firmIndex !== -1) {
+            allFirms[firmIndex].name = newName;
+        }
+
+        // Update the firm input if this firm is currently selected
+        const firmInput = document.getElementById('prospectFirm');
+        if (firmInput && firmInput.getSelectedFirmId && firmInput.getSelectedFirmId() === currentEditingFirmId) {
+            firmInput.value = newName;
+        }
+
+        // Update the prospect details modal if open
+        const prospectDetailsModal = document.getElementById('prospectDetailsModal');
+        if (prospectDetailsModal && prospectDetailsModal.classList.contains('active') && currentViewProspectId) {
+            // Reload prospect data to get updated firm name
+            await loadProspects();
+            // Re-show the prospect details with updated data
+            const updatedProspect = allProspects.find(p => p.id === currentViewProspectId);
+            if (updatedProspect) {
+                fillProspectInfo(updatedProspect);
+            }
+        }
+
+        showToast('Entreprise modifiée avec succès', 'success');
+        closeEditFirmModal();
+
+        // Reload firms to ensure consistency
+        await loadFirms();
+
+    } catch (error) {
+        console.error('Error saving firm:', error);
+        showToast('Erreur lors de la modification', 'error');
+    }
+}
+
+// Initialize edit firm modal event listeners
+function initializeEditFirmModal() {
+    const modal = document.getElementById('editFirmModal');
+    const closeBtn = document.getElementById('closeEditFirmModal');
+    const cancelBtn = document.getElementById('cancelEditFirm');
+    const confirmBtn = document.getElementById('confirmEditFirm');
+    const form = document.getElementById('editFirmForm');
+
+    if (closeBtn) {
+        closeBtn.addEventListener('click', closeEditFirmModal);
+    }
+
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', closeEditFirmModal);
+    }
+
+    if (confirmBtn) {
+        confirmBtn.addEventListener('click', saveEditedFirm);
+    }
+
+    if (form) {
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            saveEditedFirm();
+        });
+    }
+
+    // Close modal when clicking outside
+    if (modal) {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeEditFirmModal();
+            }
+        });
+    }
+}
+
+// Initialize edit firm modal on page load
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeEditFirmModal);
+} else {
+    initializeEditFirmModal();
+}
+
+// Transfer task modal functions
+let currentTransferTaskId = null;
+
+async function openTransferTaskModal(taskId) {
+    currentTransferTaskId = taskId;
+    const modal = document.getElementById('transferTaskModal');
+    const select = document.getElementById('transferTaskUser');
+
+    if (!modal || !select) return;
+
+    // Load all users
+    try {
+        const { data: users, error } = await supabase
+            .from('users')
+            .select('id, first_name, last_name, email')
+            .order('first_name');
+
+        if (error) throw error;
+
+        // Populate select options
+        select.innerHTML = '<option value="">Sélectionner un utilisateur...</option>';
+        users.forEach(user => {
+            const fullName = `${user.first_name} ${user.last_name}`;
+            select.innerHTML += `<option value="${user.id}">${fullName} (${user.email})</option>`;
+        });
+
+        modal.classList.add('active');
+
+        // Initialize Lucide icons
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
+    } catch (error) {
+        console.error('Error loading users:', error);
+        showToast('Erreur lors du chargement des utilisateurs', 'error');
+    }
+}
+
+function closeTransferTaskModal() {
+    const modal = document.getElementById('transferTaskModal');
+    if (modal) {
+        modal.classList.remove('active');
+    }
+    currentTransferTaskId = null;
+}
+
+async function transferTask() {
+    const select = document.getElementById('transferTaskUser');
+    const newUserId = select.value;
+
+    if (!newUserId) {
+        showToast('Veuillez sélectionner un utilisateur', 'error');
+        return;
+    }
+
+    if (!currentTransferTaskId) {
+        showToast('Erreur: ID de tâche manquant', 'error');
+        return;
+    }
+
+    try {
+        // Check if it's a rappels event or agent task
+        // First try rappels_events
+        let { data: rappelEvent, error: rappelError } = await supabase
+            .from('rappels_events')
+            .select('id')
+            .eq('id', currentTransferTaskId)
+            .single();
+
+        if (rappelEvent) {
+            // It's a rappels event
+            const { error } = await supabase
+                .from('rappels_events')
+                .update({ user_id: newUserId })
+                .eq('id', currentTransferTaskId);
+
+            if (error) throw error;
+
+            showToast('Tâche transférée avec succès', 'success');
+            closeTransferTaskModal();
+
+            // Refresh rappels calendar if visible
+            if (typeof renderRappelsCalendar === 'function') {
+                await renderRappelsCalendar();
+            }
+        } else {
+            // Try agent task
+            const { error } = await supabase
+                .from('crm_agent_tasks')
+                .update({ user_id: newUserId })
+                .eq('id', currentTransferTaskId);
+
+            if (error) throw error;
+
+            showToast('Tâche transférée avec succès', 'success');
+            closeTransferTaskModal();
+
+            // Refresh agent tasks if visible
+            if (typeof loadAgent === 'function') {
+                await loadAgent();
+            }
+        }
+    } catch (error) {
+        console.error('Error transferring task:', error);
+        showToast('Erreur lors du transfert de la tâche', 'error');
+    }
+}
+
+// Initialize transfer task modal event listeners
+function initializeTransferTaskModal() {
+    const modal = document.getElementById('transferTaskModal');
+    const closeBtn = document.getElementById('closeTransferTaskModal');
+    const cancelBtn = document.getElementById('cancelTransferTask');
+    const confirmBtn = document.getElementById('confirmTransferTask');
+    const form = document.getElementById('transferTaskForm');
+
+    if (closeBtn) {
+        closeBtn.addEventListener('click', closeTransferTaskModal);
+    }
+
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', closeTransferTaskModal);
+    }
+
+    if (confirmBtn) {
+        confirmBtn.addEventListener('click', transferTask);
+    }
+
+    if (form) {
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            transferTask();
+        });
+    }
+
+    // Close modal when clicking outside
+    if (modal) {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeTransferTaskModal();
+            }
+        });
+    }
+}
+
+// Initialize transfer task modal on page load
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeTransferTaskModal);
+} else {
+    initializeTransferTaskModal();
 }
 
 // Function no longer needed - firm status is now handled in HTML
@@ -6471,17 +6917,25 @@ document.addEventListener('DOMContentLoaded', () => {
             if (file) {
                 // Ne pas afficher d'alerte de format non supporté, accepter le fichier
                 console.log('File selected:', file.name, file.type, file.size);
+
+                // Add success animation and keep it until file is sent
+                depotUploadZone.classList.add('success');
+
                 // Update upload zone text to show selected file
                 const uploadText = depotUploadZone.querySelector('.depot-upload-text');
                 if (uploadText) {
                     uploadText.textContent = `Fichier sélectionné : ${file.name}`;
                 }
+
+                // Keep success class until modal is closed or file is sent
+                // (will be removed in hideDepotModal function)
             } else {
                 // Reset text if no file
                 const uploadText = depotUploadZone.querySelector('.depot-upload-text');
                 if (uploadText) {
                     uploadText.textContent = 'Cliquez pour téléverser ou glissez-déposez le fichier';
                 }
+                depotUploadZone.classList.remove('success');
             }
         });
     }
@@ -6555,6 +7009,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const stopRecordBtn = document.getElementById('stopRecordBtn');
     const recordSourceBtn = document.getElementById('recordSourceBtn');
     const recordSourceMenu = document.getElementById('recordSourceMenu');
+    const closeRecordModal = document.getElementById('closeRecordModal');
 
     if (startRecordBtn) {
         startRecordBtn.addEventListener('click', () => {
@@ -6567,6 +7022,13 @@ document.addEventListener('DOMContentLoaded', () => {
         stopRecordBtn.addEventListener('click', () => {
             console.log('Stop button clicked');
             stopRecording();
+        });
+    }
+
+    // Close button
+    if (closeRecordModal) {
+        closeRecordModal.addEventListener('click', () => {
+            hideRecordModal();
         });
     }
 
@@ -6868,6 +7330,9 @@ function renderRappelsSemaineView() {
                                     <div class="rappels-event-footer">
                                         ${timeDisplay ? `<span class="rappels-event-time-badge">${timeDisplay}</span>` : ''}
                                         <div class="rappels-event-actions">
+                                            <!--<button class="rappels-event-transfer" data-event-id="${event.id}" title="Transférer la tâche">
+                                                <i data-lucide="send"></i>
+                                            </button>-->
                                             <button class="rappels-event-validate" data-event-id="${event.id}" title="Marquer comme fait" ${event.validated ? 'style="opacity: 0.3; pointer-events: none;"' : ''}>
                                                 <i data-lucide="check"></i>
                                             </button>
@@ -7017,13 +7482,23 @@ function attachRappelsEventListeners() {
         });
     });
 
+    // Transfer event buttons
+    const transferButtons = document.querySelectorAll('.rappels-event-transfer');
+    transferButtons.forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const eventId = parseInt(btn.getAttribute('data-event-id'));
+            openTransferTaskModal(eventId);
+        });
+    });
+
     // Delete event buttons
     const deleteButtons = document.querySelectorAll('.rappels-event-delete, .rappels-event-delete-small');
     deleteButtons.forEach(btn => {
         btn.addEventListener('click', async (e) => {
             e.stopPropagation();
             const eventId = parseInt(btn.getAttribute('data-event-id'));
-            
+
             // Supprimer directement sans confirmation
             const success = await deleteRappelsEvent(eventId);
             if (success) {
@@ -7037,7 +7512,9 @@ function attachRappelsEventListeners() {
     eventItems.forEach(item => {
         item.addEventListener('click', (e) => {
             // Don't trigger if clicking on buttons
-            if (e.target.closest('.rappels-event-validate') || e.target.closest('.rappels-event-delete')) {
+            if (e.target.closest('.rappels-event-validate') ||
+                e.target.closest('.rappels-event-delete') ||
+                e.target.closest('.rappels-event-transfer')) {
                 return;
             }
             const eventId = parseInt(item.getAttribute('data-event-id'));
@@ -8164,12 +8641,16 @@ function renderAgentTasks(tasks) {
         const prospect = task.prospects || {};
         const prospectName = [prospect.first_name, prospect.last_name].filter(Boolean).join(' ');
         const prospectCompany = prospect.society || '';
-        
+
+        // Build full contact info: Prénom - Nom - Société
+        const fullContactInfo = prospectCompany
+            ? `${prospectName} - ${prospectCompany}`
+            : prospectName;
+
         // Only show prospect info if we have at least a name
         const prospectHtml = prospectName ? `
                         <p class="agent-event-prospect">
-                            <strong>${prospectName}</strong>
-                            ${prospectCompany ? `<span class="agent-event-company">${prospectCompany}</span>` : ''}
+                            <strong>${fullContactInfo}</strong>
                         </p>` : '';
         
         return `
@@ -8186,6 +8667,9 @@ function renderAgentTasks(tasks) {
                 </div>
                 ${formHtml}
                 <div class="agent-event-actions">
+                    <!--<button class="agent-event-btn agent-event-btn-transfer" data-task-id="${task.id}" data-action="transfer" title="Transférer la tâche">
+                        <i data-lucide="send"></i>
+                    </button>-->
                     <button class="agent-event-btn agent-event-btn-delete" data-task-id="${task.id}" data-action="delete">
                         <i data-lucide="trash-2"></i>
                     </button>
@@ -8207,9 +8691,15 @@ function renderAgentTasks(tasks) {
 // Generate task form based on type
 function generateTaskForm(task) {
     const content = task.content || {};
-    
+
     switch(task.type) {
         case 'set_email':
+            // Map field names: support both old format (email_to, email_subject, email_body)
+            // and new format (recipient, subject, body)
+            const emailTo = content.email_to || content.recipient || '';
+            const emailSubject = content.email_subject || content.subject || '';
+            const emailBody = content.email_body || content.body || '';
+
             return `
                 <div class="agent-event-form">
                     <div class="agent-form-group">
@@ -8221,15 +8711,15 @@ function generateTaskForm(task) {
                     </div>
                     <div class="agent-form-group">
                         <label class="agent-form-label">Destinataire</label>
-                        <input type="email" class="agent-form-input" data-field="email_to" value="${content.email_to || ''}" placeholder="email@example.com">
+                        <input type="email" class="agent-form-input" data-field="recipient" value="${emailTo}" placeholder="email@example.com">
                     </div>
                     <div class="agent-form-group">
                         <label class="agent-form-label">Objet</label>
-                        <input type="text" class="agent-form-input" data-field="email_subject" value="${content.email_subject || ''}" placeholder="Objet de l'email">
+                        <input type="text" class="agent-form-input" data-field="subject" value="${emailSubject}" placeholder="Objet de l'email">
                     </div>
                     <div class="agent-form-group">
                         <label class="agent-form-label">Contenu</label>
-                        <div class="agent-form-html-editor" contenteditable="true" data-field="email_body">${content.email_body || ''}</div>
+                        <div class="agent-form-html-editor" contenteditable="true" data-field="body">${emailBody}</div>
                     </div>
                 </div>
             `;
@@ -8252,19 +8742,34 @@ function generateTaskForm(task) {
             `;
             
         case 'send_email':
+            // Map field names: support both old format (email_to, email_subject, email_body)
+            // and new format (recipient, subject, body)
+            const sendEmailRecipient = content.recipient || content.email_to || '';
+            const sendEmailSubject = content.subject || content.email_subject || '';
+            const sendEmailBody = content.body || content.email_body || '';
+            const sendEmailDate = content.send_date || '';
+            const sendEmailTime = content.send_time || '';
+
             return `
                 <div class="agent-event-form">
                     <div class="agent-form-group">
+                        <label class="agent-form-label">Date et heure d'envoi</label>
+                        <div style="display: flex; gap: 0.75rem;">
+                            <input type="date" class="agent-form-input" data-field="send_date" value="${sendEmailDate}" style="flex: 1;">
+                            <input type="time" class="agent-form-input" data-field="send_time" value="${sendEmailTime}" style="flex: 1;" step="300">
+                        </div>
+                    </div>
+                    <div class="agent-form-group">
                         <label class="agent-form-label">Destinataire</label>
-                        <input type="email" class="agent-form-input" data-field="email_to" value="${content.email_to || ''}" placeholder="email@example.com">
+                        <input type="email" class="agent-form-input" data-field="recipient" value="${sendEmailRecipient}" placeholder="email@example.com">
                     </div>
                     <div class="agent-form-group">
                         <label class="agent-form-label">Objet</label>
-                        <input type="text" class="agent-form-input" data-field="email_subject" value="${content.email_subject || ''}" placeholder="Objet de l'email">
+                        <input type="text" class="agent-form-input" data-field="subject" value="${sendEmailSubject}" placeholder="Objet de l'email">
                     </div>
                     <div class="agent-form-group">
                         <label class="agent-form-label">Contenu</label>
-                        <div class="agent-form-html-editor" contenteditable="true" data-field="email_body">${content.email_body || ''}</div>
+                        <div class="agent-form-html-editor" contenteditable="true" data-field="body">${sendEmailBody}</div>
                     </div>
                 </div>
             `;
@@ -8342,7 +8847,12 @@ async function handleAgentEventAction(e) {
     const prospectId = btn.getAttribute('data-prospect-id');
     const action = btn.getAttribute('data-action');
     const taskType = btn.getAttribute('data-type');
-    
+
+    if (action === 'transfer') {
+        openTransferTaskModal(parseInt(taskId));
+        return;
+    }
+
     if (action === 'delete') {
         const confirmed = await customConfirm('Êtes-vous sûr de vouloir supprimer cet événement ?', 'Supprimer l\'événement');
         if (!confirmed) return;
