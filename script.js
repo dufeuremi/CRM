@@ -218,7 +218,7 @@ function switchToSection(sectionId) {
                 'dashboard': 'Dashboard',
                 'analytics': 'Analytics',
                 'disponibilites': 'Disponibilités',
-                'rappels': 'Relances',
+                'rappels': 'Tâches',
                 'historique': 'Historique des appels',
                 'mails': 'Mails',
                 'prospects': 'Prospection',
@@ -283,16 +283,18 @@ function switchToSection(sectionId) {
             if (sectionId === 'rappels') {
                 loadRappels();
                 loadScheduledEmails(); // Also load scheduled emails in rappels section
+                updateRelancesNotificationBadge(); // Update badge count
             }
-            
+
             // Load historique if historique section is shown
             if (sectionId === 'historique') {
                 loadHistorique();
             }
-            
+
             // Load mails if mails section is shown
             if (sectionId === 'mails') {
                 loadMails();
+                updateMailsReceivedNotificationBadge(); // Update badge count
             }
             
             // Load analytics if analytics section is shown
@@ -377,6 +379,9 @@ async function ensureSupabaseAndReload() {
         if (typeof loadRappels === 'function') {
             loadRappels();
         }
+        if (typeof updateRelancesNotificationBadge === 'function') {
+            updateRelancesNotificationBadge();
+        }
     } else if (initialSection === 'historique') {
         if (typeof loadHistorique === 'function') {
             loadHistorique();
@@ -384,6 +389,9 @@ async function ensureSupabaseAndReload() {
     } else if (initialSection === 'mails') {
         if (typeof loadMails === 'function') {
             loadMails();
+        }
+        if (typeof updateMailsReceivedNotificationBadge === 'function') {
+            updateMailsReceivedNotificationBadge();
         }
     }
 }
@@ -1816,6 +1824,124 @@ Supabase Client: ${typeof window.supabaseClient !== 'undefined' ? 'Disponible' :
         alert(errorDetails);
         displayProspectsError('Une erreur est survenue');
     }
+
+    // Initialize real-time subscription for prospects
+    initProspectsRealtime();
+}
+
+// ================= PROSPECTS REALTIME SUBSCRIPTION =================
+
+let prospectsRealtimeChannel = null;
+
+// Initialize real-time subscription to crm_prospects
+function initProspectsRealtime() {
+    if (!window.supabaseClient || !window.currentUserId) {
+        console.log('Cannot init prospects realtime: missing supabase client or user ID');
+        return;
+    }
+
+    // Remove existing channel if any
+    if (prospectsRealtimeChannel) {
+        window.supabaseClient.removeChannel(prospectsRealtimeChannel);
+    }
+
+    // Subscribe to changes on crm_prospects table for current user
+    prospectsRealtimeChannel = window.supabaseClient
+        .channel('crm_prospects_changes')
+        .on(
+            'postgres_changes',
+            {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'crm_prospects',
+                filter: `user_id=eq.${window.currentUserId}`
+            },
+            (payload) => {
+                console.log('Prospect change received:', payload);
+                handleProspectChange(payload);
+            }
+        )
+        .subscribe();
+
+    console.log('✅ Prospects realtime subscription initialized');
+}
+
+// Handle real-time prospect changes
+function handleProspectChange(payload) {
+    const { new: newRecord, old: oldRecord } = payload;
+
+    if (!newRecord) return;
+
+    const prospectId = newRecord.id;
+    const newStatus = newRecord.traitement_status;
+    const oldStatus = oldRecord?.traitement_status;
+
+    console.log(`Prospect ${prospectId} status changed: ${oldStatus} -> ${newStatus}`);
+
+    // Find the prospect row in the table
+    const row = document.querySelector(`tr[data-prospect-id="${prospectId}"]`);
+    if (!row) {
+        console.log('Row not found for prospect:', prospectId);
+        return;
+    }
+
+    // Handle different status transitions
+    if (newStatus === 'analysing') {
+        // Show loading animation
+        setProspectRowAnalysing(row, true);
+    } else if (newStatus === 'done' && oldStatus === 'analysing') {
+        // Stop loading animation and show success state
+        setProspectRowAnalysing(row, false);
+        setProspectRowDone(row, true);
+    } else if (newStatus === 'done') {
+        // Direct to done state (without animation first)
+        setProspectRowDone(row, true);
+    }
+}
+
+// Set prospect row to analysing state (loading animation)
+function setProspectRowAnalysing(row, isAnalysing) {
+    if (isAnalysing) {
+        row.classList.add('prospect-analysing');
+        console.log('✅ Set row to analysing state');
+    } else {
+        row.classList.remove('prospect-analysing');
+        console.log('✅ Removed analysing state from row');
+    }
+}
+
+// Set prospect row to done state (green border + checkmark)
+function setProspectRowDone(row, isDone) {
+    if (isDone) {
+        row.classList.add('prospect-done');
+
+        // Add checkmark icon if not already present
+        const firstCell = row.querySelector('td:first-child');
+        if (firstCell && !firstCell.querySelector('.prospect-done-checkmark')) {
+            const checkmark = document.createElement('span');
+            checkmark.className = 'prospect-done-checkmark';
+            checkmark.innerHTML = '<i data-lucide="check-circle"></i>';
+            firstCell.style.position = 'relative';
+            firstCell.insertBefore(checkmark, firstCell.firstChild);
+
+            // Reinitialize Lucide icons
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        }
+
+        console.log('✅ Set row to done state with checkmark');
+    } else {
+        row.classList.remove('prospect-done');
+
+        // Remove checkmark if present
+        const checkmark = row.querySelector('.prospect-done-checkmark');
+        if (checkmark) {
+            checkmark.remove();
+        }
+
+        console.log('✅ Removed done state from row');
+    }
 }
 
 // Utility functions for formatting
@@ -2328,6 +2454,9 @@ function createProspectRow(prospect, isArchived = false) {
             <button class="btn-icon btn-invite" title="📧 Invitation RDV - Envoyer la présentation ou l'invitation Teams" data-prospect-id="${prospect.id}" style="display: none;">
                 <i data-lucide="mail"></i>
             </button>
+            <button class="btn-icon btn-create-task" title="➕ Créer une tâche agent" data-prospect-id="${prospect.id}" data-prospect-name="${(firstName + ' ' + lastName).trim() || 'ce prospect'}">
+                <i data-lucide="plus-circle"></i>
+            </button>
             ${archiveButton}
             <button class="btn-icon btn-delete" title="🗑️ Supprimer définitivement ce prospect" data-prospect-id="${prospect.id}" data-prospect-name="${(firstName + ' ' + lastName).trim() || 'ce prospect'}">
                 <i data-lucide="trash-2"></i>
@@ -2379,7 +2508,18 @@ function attachProspectRowListeners() {
             showInviteModal(prospectId);
         });
     });
-    
+
+    // Add create task button event listeners
+    const createTaskButtons = document.querySelectorAll('.btn-create-task');
+    createTaskButtons.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const prospectId = parseInt(btn.getAttribute('data-prospect-id'));
+            const prospectName = btn.getAttribute('data-prospect-name');
+            showTaskActionDropdown(e.target.closest('.btn-create-task'), prospectId, prospectName);
+        });
+    });
+
     // Add archive button event listeners
     const archiveButtons = document.querySelectorAll('.btn-archive');
     archiveButtons.forEach(btn => {
@@ -3812,13 +3952,29 @@ async function confirmDepot() {
         
         const result = await response.json();
         console.log('Depot sent successfully:', result);
-    
+
+        // Update traitement_status to 'analysing' in database
+        try {
+            const { error: updateError } = await window.supabaseClient
+                .from('crm_prospects')
+                .update({ traitement_status: 'analysing' })
+                .eq('id', prospectId);
+
+            if (updateError) {
+                console.error('Error updating traitement_status:', updateError);
+            } else {
+                console.log('✅ Prospect traitement_status set to analysing:', prospectId);
+            }
+        } catch (err) {
+            console.error('Error setting traitement_status:', err);
+        }
+
         // Set loading state on depot button FIRST (replaces icon with spinner)
         setDepotButtonLoading(prospectId, true);
-        
+
         // Start prospect row animation
         setProspectRowDepositing(prospectId, true);
-        
+
         // Add to pending depots map with timestamp
         pendingDepots.set(prospectId, Date.now());
         console.log('✅ Added prospect to pending depots:', prospectId, 'Current pending:', Array.from(pendingDepots.keys()));
@@ -6555,6 +6711,7 @@ async function validateRappelsEvent(eventId) {
         }
 
         showToast('Événement marqué comme fait', 'success');
+        updateRelancesNotificationBadge();
         return true;
     } catch (error) {
         console.error('Error in validateRappelsEvent:', error);
@@ -6583,6 +6740,7 @@ async function deleteRappelsEvent(eventId) {
         }
 
         showToast('Événement supprimé définitivement', 'success');
+        updateRelancesNotificationBadge();
         return true;
     } catch (error) {
         console.error('Error in deleteRappelsEvent:', error);
@@ -7347,6 +7505,7 @@ function showRappelsAddInput(dateStr, buttonEl) {
         const result = await addRappelsEvent(eventData);
         if (result) {
             await renderRappelsCalendar();
+            updateRelancesNotificationBadge();
         }
         input.remove();
     };
@@ -7892,11 +8051,91 @@ function getEventDate(task) {
 function updateAgentNotificationBadge(count) {
     const badge = document.getElementById('agentNotificationBadge');
     if (!badge) return;
-    
+
     if (count > 0) {
         badge.textContent = count > 99 ? '99+' : count;
         badge.style.display = 'flex';
     } else {
+        badge.style.display = 'none';
+    }
+}
+
+// Update relances notification badge
+async function updateRelancesNotificationBadge() {
+    const badge = document.getElementById('relancesNotificationBadge');
+    if (!badge) return;
+
+    try {
+        if (!window.supabaseClient || !window.currentUserId) {
+            badge.style.display = 'none';
+            return;
+        }
+
+        // Count future rappels (start date >= today)
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayStr = today.toISOString();
+
+        const { data, error, count } = await window.supabaseClient
+            .from('crm_calendars')
+            .select('*', { count: 'exact', head: false })
+            .eq('user_id', window.currentUserId)
+            .gte('start', todayStr);
+
+        if (error) {
+            console.error('Error counting relances:', error);
+            badge.style.display = 'none';
+            return;
+        }
+
+        const totalCount = count || 0;
+
+        if (totalCount > 0) {
+            badge.textContent = totalCount > 99 ? '99+' : totalCount;
+            badge.style.display = 'flex';
+        } else {
+            badge.style.display = 'none';
+        }
+    } catch (error) {
+        console.error('Error in updateRelancesNotificationBadge:', error);
+        badge.style.display = 'none';
+    }
+}
+
+// Update mails received notification badge
+async function updateMailsReceivedNotificationBadge() {
+    const badge = document.getElementById('mailsReceivedNotificationBadge');
+    if (!badge) return;
+
+    try {
+        if (!window.supabaseClient || !window.currentUserId) {
+            badge.style.display = 'none';
+            return;
+        }
+
+        // Count received emails only
+        const { data, error, count } = await window.supabaseClient
+            .from('crm_mails')
+            .select('*', { count: 'exact', head: false })
+            .eq('recipient_id', window.currentUserId)
+            .eq('type', 'received');
+
+        if (error) {
+            console.error('Error counting received mails:', error);
+            badge.style.display = 'none';
+            return;
+        }
+
+        const totalCount = count || 0;
+
+        if (totalCount > 0) {
+            badge.textContent = totalCount > 99 ? '99+' : totalCount;
+            badge.style.display = 'flex';
+        } else {
+            badge.style.display = 'none';
+        }
+    } catch (error) {
+        console.error('Error in updateMailsReceivedNotificationBadge:', error);
         badge.style.display = 'none';
     }
 }
@@ -7982,15 +8221,15 @@ function generateTaskForm(task) {
                     </div>
                     <div class="agent-form-group">
                         <label class="agent-form-label">Destinataire</label>
-                        <input type="email" class="agent-form-input" data-field="recipient" value="${content.recipient || ''}" placeholder="email@example.com">
+                        <input type="email" class="agent-form-input" data-field="email_to" value="${content.email_to || ''}" placeholder="email@example.com">
                     </div>
                     <div class="agent-form-group">
                         <label class="agent-form-label">Objet</label>
-                        <input type="text" class="agent-form-input" data-field="subject" value="${content.subject || ''}" placeholder="Objet de l'email">
+                        <input type="text" class="agent-form-input" data-field="email_subject" value="${content.email_subject || ''}" placeholder="Objet de l'email">
                     </div>
                     <div class="agent-form-group">
                         <label class="agent-form-label">Contenu</label>
-                        <div class="agent-form-html-editor" contenteditable="true" data-field="body">${content.body || ''}</div>
+                        <div class="agent-form-html-editor" contenteditable="true" data-field="email_body">${content.email_body || ''}</div>
                     </div>
                 </div>
             `;
@@ -8016,23 +8255,16 @@ function generateTaskForm(task) {
             return `
                 <div class="agent-event-form">
                     <div class="agent-form-group">
-                        <label class="agent-form-label">Date et heure d'envoi (immédiat)</label>
-                        <div style="display: flex; gap: 0.75rem;">
-                            <input type="date" class="agent-form-input" data-field="send_date" value="${content.send_date || ''}" style="flex: 1;">
-                            <input type="time" class="agent-form-input" data-field="send_time" value="${content.send_time || ''}" style="flex: 1;" step="300">
-                        </div>
-                    </div>
-                    <div class="agent-form-group">
                         <label class="agent-form-label">Destinataire</label>
-                        <input type="email" class="agent-form-input" data-field="recipient" value="${content.recipient || ''}" placeholder="email@example.com">
+                        <input type="email" class="agent-form-input" data-field="email_to" value="${content.email_to || ''}" placeholder="email@example.com">
                     </div>
                     <div class="agent-form-group">
                         <label class="agent-form-label">Objet</label>
-                        <input type="text" class="agent-form-input" data-field="subject" value="${content.subject || ''}" placeholder="Objet de l'email">
+                        <input type="text" class="agent-form-input" data-field="email_subject" value="${content.email_subject || ''}" placeholder="Objet de l'email">
                     </div>
                     <div class="agent-form-group">
                         <label class="agent-form-label">Contenu</label>
-                        <div class="agent-form-html-editor" contenteditable="true" data-field="body">${content.body || ''}</div>
+                        <div class="agent-form-html-editor" contenteditable="true" data-field="email_body">${content.email_body || ''}</div>
                     </div>
                 </div>
             `;
@@ -9528,6 +9760,268 @@ function restoreInvoiceFormData() {
         console.error('Error restoring invoice form data:', error);
         // Clear corrupted data
         localStorage.removeItem('invoiceFormData');
+    }
+}
+
+// ==================== TASK CREATION FROM PROSPECT ROW ====================
+
+// Show dropdown to select task action type
+function showTaskActionDropdown(buttonElement, prospectId, prospectName) {
+    // Remove any existing dropdown
+    const existingDropdown = document.querySelector('.prospect-task-dropdown');
+    if (existingDropdown) {
+        existingDropdown.remove();
+    }
+
+    // Create dropdown element
+    const dropdown = document.createElement('div');
+    dropdown.className = 'prospect-task-dropdown';
+    dropdown.innerHTML = `
+        <button class="custom-action-item" data-action="send_email" data-prospect-id="${prospectId}">
+            <i data-lucide="mail"></i>
+            <span>Envoyer un email</span>
+        </button>
+        <button class="custom-action-item" data-action="set_remind" data-prospect-id="${prospectId}">
+            <i data-lucide="bell"></i>
+            <span>Planifier un rappel</span>
+        </button>
+        <button class="custom-action-item" data-action="set_email" data-prospect-id="${prospectId}">
+            <i data-lucide="calendar-clock"></i>
+            <span>Programmer un email</span>
+        </button>
+        <button class="custom-action-item" data-action="send_visio" data-prospect-id="${prospectId}">
+            <i data-lucide="video"></i>
+            <span>Envoyer l'invitation Teams</span>
+        </button>
+    `;
+
+    // Position dropdown near the button
+    const rect = buttonElement.getBoundingClientRect();
+    dropdown.style.position = 'fixed';
+    dropdown.style.top = `${rect.bottom + 5}px`;
+    dropdown.style.left = `${rect.left}px`;
+    dropdown.style.zIndex = '10000';
+
+    document.body.appendChild(dropdown);
+
+    // Initialize Lucide icons
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+
+    // Add click listeners to action items
+    dropdown.querySelectorAll('.custom-action-item').forEach(item => {
+        item.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const action = item.getAttribute('data-action');
+            const pId = parseInt(item.getAttribute('data-prospect-id'));
+
+            // Close dropdown
+            dropdown.remove();
+
+            // Create agent task
+            await createAgentTaskForProspect(pId, action, prospectName);
+        });
+    });
+
+    // Close dropdown when clicking outside
+    setTimeout(() => {
+        document.addEventListener('click', function closeDropdown(e) {
+            if (!dropdown.contains(e.target) && e.target !== buttonElement) {
+                dropdown.remove();
+                document.removeEventListener('click', closeDropdown);
+            }
+        });
+    }, 100);
+}
+
+// Create agent task for a prospect
+async function createAgentTaskForProspect(prospectId, taskType, prospectName) {
+    if (!window.supabaseClient || !window.currentUserId) {
+        showToast('Erreur: Client Supabase ou ID utilisateur non disponible', 'error');
+        return;
+    }
+
+    try {
+        // Get prospect details to pre-fill fields
+        const { data: prospect, error: prospectError } = await window.supabaseClient
+            .from('crm_prospects')
+            .select('*')
+            .eq('id', prospectId)
+            .single();
+
+        if (prospectError) {
+            console.error('Error fetching prospect:', prospectError);
+            showToast('Erreur lors de la récupération du prospect', 'error');
+            return;
+        }
+
+        // Get firm name if firm_id exists
+        let firmName = '';
+        if (prospect.firm_id) {
+            const { data: firm, error: firmError } = await window.supabaseClient
+                .from('crm_firmes')
+                .select('name')
+                .eq('id', prospect.firm_id)
+                .single();
+
+            if (!firmError && firm) {
+                firmName = firm.name;
+            }
+        }
+
+        // Add firm name to prospect object
+        prospect.firm_name = firmName;
+
+        // Prepare task content based on type
+        const content = prepareTaskContent(taskType, prospect);
+
+        // Prepare task title
+        const taskTitle = getTaskTitle(taskType, prospectName);
+
+        // Prepare task data
+        const taskData = {
+            user_id: window.currentUserId,
+            prospect_id: prospectId,
+            type: taskType,
+            title: taskTitle,
+            content: content, // Keep as object, Supabase should handle JSON columns automatically
+            human_checking: false // Required to show in agent tasks list
+            // Let database set created_at and other fields with default values
+        };
+
+        console.log('Creating agent task with data:', taskData);
+
+        // Insert task into database
+        const { data: newTask, error: insertError } = await window.supabaseClient
+            .from('crm_agent_tasks')
+            .insert([taskData])
+            .select()
+            .single();
+
+        if (insertError) {
+            console.error('Error creating agent task:', insertError);
+            console.error('Error details:', {
+                message: insertError.message,
+                details: insertError.details,
+                hint: insertError.hint,
+                code: insertError.code
+            });
+            console.error('Task data that failed:', taskData);
+            showToast(`Erreur: ${insertError.message || 'Erreur lors de la création de la tâche'}`, 'error');
+            return;
+        }
+
+        showToast('Tâche agent créée avec succès', 'success');
+
+        // Open agent sidebar
+        openAgentSidebar();
+
+        // Reload agent tasks
+        if (typeof loadAgentTasks === 'function') {
+            await loadAgentTasks();
+        }
+
+    } catch (error) {
+        console.error('Error in createAgentTaskForProspect:', error);
+        showToast('Une erreur est survenue', 'error');
+    }
+}
+
+// Generate email signature with user data
+function generateEmailSignature() {
+    const firstName = window.currentUserFirstName || '';
+    const lastName = window.currentUserLastName || '';
+    const email = window.currentUserEmail || '';
+    const phone = window.currentUserPhone || '';
+    const avatarUrl = window.currentUserAvatarUrl || '';
+
+    return `<table cellpadding='0' cellspacing='0' border='0' style='border-collapse: collapse;'><tr><td style='vertical-align: top; padding-right: 20px;'><img src='${avatarUrl}' alt='${firstName} ${lastName.toUpperCase()}' width='160' height='160' style='display: block; border-radius: 32px; border: 1px solid #333333;'></td><td style='vertical-align: top;'><p style='margin: 0; line-height: 1.8; font-size: 14px;'><strong style='font-size: 15px;'>${firstName} ${lastName.toUpperCase()}</strong><br><strong style='font-size: 15px;'>Business developper</strong><br>TASKALYS<br><a href='mailto:contact@taskalys.fr' style='color: #0078D4; text-decoration: none;'>contact@taskalys.fr</a><br><span style='color: #666;'>+33 ${phone}</span></p></td></tr></table>`;
+}
+
+// Prepare task content based on type and prospect data
+function prepareTaskContent(taskType, prospect) {
+    const content = {};
+
+    // Common fields
+    const prospectFirstName = prospect.first_name || '';
+    const prospectLastName = prospect.last_name || '';
+    const prospectCompany = prospect.firm_name || prospect.society || '';
+
+    content.prospect_name = `${prospectFirstName} ${prospectLastName}`.trim();
+    content.prospect_email = prospect.email || '';
+    content.prospect_phone = prospect.phone || '';
+    content.prospect_company = prospectCompany;
+
+    // Generate email signature
+    const signature = generateEmailSignature();
+
+    // Format company name for email subject (use {client} if empty)
+    const companyForSubject = prospectCompany || '{client}';
+
+    // Type-specific fields
+    switch(taskType) {
+        case 'send_email':
+            content.email_subject = `Taskalys x ${companyForSubject} |`;
+            content.email_to = prospect.email || '';
+            content.email_body = `Bonjour,\n\n\n${prospectLastName}\n\n${signature}`;
+            break;
+
+        case 'set_remind':
+            // Set remind date to tomorrow
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            tomorrow.setHours(9, 0, 0, 0);
+            content.remind_date = tomorrow.toISOString().split('T')[0];
+            content.remind_time = '09:00';
+            content.remind_note = '';
+            break;
+
+        case 'set_email':
+            // Set email date to tomorrow
+            const emailDate = new Date();
+            emailDate.setDate(emailDate.getDate() + 1);
+            emailDate.setHours(9, 0, 0, 0);
+            content.send_date = emailDate.toISOString().split('T')[0];
+            content.send_time = '09:00';
+            content.email_subject = `Taskalys x ${companyForSubject} |`;
+            content.email_to = prospect.email || '';
+            content.email_body = `Bonjour,\n\n\n${prospectLastName}\n\n${signature}`;
+            break;
+
+        case 'send_visio':
+            // Set meeting date to next week
+            const meetingDate = new Date();
+            meetingDate.setDate(meetingDate.getDate() + 7);
+            meetingDate.setHours(14, 0, 0, 0);
+            content.meeting_date = meetingDate.toISOString().split('T')[0];
+            content.meeting_time = '14:00';
+            content.meeting_duration = 30;
+            content.email_subject = `Taskalys x ${companyForSubject} | Invitation Appel de découverte`;
+            content.email_to = prospect.email || '';
+            content.email_body = `Bonjour,\n\n\n${prospectLastName}\n\n${signature}`;
+            break;
+    }
+
+    return content;
+}
+
+// Get task title based on type
+function getTaskTitle(taskType, prospectName) {
+    const titles = {
+        'send_email': `Envoyer un email à ${prospectName}`,
+        'set_remind': `Rappeler ${prospectName}`,
+        'set_email': `Programmer un email pour ${prospectName}`,
+        'send_visio': `Envoyer invitation Teams à ${prospectName}`
+    };
+    return titles[taskType] || `Action pour ${prospectName}`;
+}
+
+// Open agent sidebar
+function openAgentSidebar() {
+    const agentSidebar = document.getElementById('agentSidebar');
+    if (agentSidebar) {
+        agentSidebar.classList.add('open');
     }
 }
 

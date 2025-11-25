@@ -61,9 +61,10 @@
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a href="#" class="nav-link" data-section="rappels">
+                        <a href="#" class="nav-link" data-section="rappels" style="position: relative;">
                             <i data-lucide="bell"></i>
-                            <span class="nav-text">Relances</span>
+                            <span class="nav-text">Tâches</span>
+                            <span class="nav-notification-badge" id="relancesNotificationBadge" style="display:none;">0</span>
                         </a>
                     </li>
                     <li class="nav-item">
@@ -73,9 +74,10 @@
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a href="#" class="nav-link" data-section="mails">
+                        <a href="#" class="nav-link" data-section="mails" style="position: relative;">
                             <i data-lucide="mail"></i>
                             <span class="nav-text">Mails</span>
+                            <span class="nav-notification-badge" id="mailsReceivedNotificationBadge" style="display:none;">0</span>
                         </a>
                     </li>
                     <li class="nav-item">
@@ -1260,7 +1262,7 @@
                 // Get user data from users table using UUID
                 const { data: userData, error } = await supabase
                     .from('users')
-                    .select('id, first_name, last_name, email, avatar_url, role, mission')
+                    .select('id, first_name, last_name, email, phone, avatar_url, role, mission')
                     .eq('uuid', authUser.id)
                     .single();
 
@@ -1274,12 +1276,14 @@
                 if (userData) {
                     // Store user ID globally for use in prospects
                     window.currentUserId = userData.id;
-                    
-                    // Store user name globally for transfers
+
+                    // Store user data globally
                     window.currentUserFirstName = userData.first_name || '';
                     window.currentUserLastName = userData.last_name || '';
                     window.currentUserEmail = userData.email || authUser.email || '';
-                    window.currentUserFullName = (userData.first_name && userData.last_name) 
+                    window.currentUserPhone = userData.phone || '';
+                    window.currentUserAvatarUrl = userData.avatar_url || '';
+                    window.currentUserFullName = (userData.first_name && userData.last_name)
                         ? `${userData.first_name} ${userData.last_name}`
                         : userData.first_name || userData.last_name || authUser.email?.split('@')[0] || 'Utilisateur';
                     
@@ -1389,6 +1393,13 @@
                     clearInterval(waitUser);
                     if (typeof initAgentSection === 'function') {
                         initAgentSection();
+                    }
+                    // Update notification badges
+                    if (typeof updateRelancesNotificationBadge === 'function') {
+                        updateRelancesNotificationBadge();
+                    }
+                    if (typeof updateMailsReceivedNotificationBadge === 'function') {
+                        updateMailsReceivedNotificationBadge();
                     }
                 }
             }, 100);

@@ -2468,6 +2468,28 @@ body::before {
     flex: 1;
 }
 
+.custom-action-item:hover {
+    background: var(--bg-light);
+}
+
+.custom-action-item:active {
+    background: #e8edf5;
+}
+
+/* Prospect task dropdown (reuses custom-action-dropdown styles) */
+.prospect-task-dropdown {
+    position: fixed;
+    background: var(--bg-white);
+    border: 1px solid #34466a;
+    border-radius: 15px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+    padding: 0.5rem;
+    z-index: 10000;
+    min-width: 260px;
+    animation: dropdownSlideIn 0.2s ease-out;
+    font-family: 'Sora', sans-serif;
+}
+
 /* Modal */
 .modal-overlay {
     position: fixed;
@@ -5156,6 +5178,25 @@ body::before {
     }
 }
 
+/* Navigation Notification Badge for sidebar links */
+.nav-notification-badge {
+    position: absolute;
+    top: 50%;
+    right: 16px;
+    transform: translateY(-50%);
+    background: #EF4444;
+    color: white;
+    font-size: 0.7rem;
+    font-weight: 600;
+    min-width: 18px;
+    height: 18px;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 5px;
+}
+
 .agent-sidebar-content {
     flex: 1;
     overflow-y: auto;
@@ -5708,13 +5749,71 @@ body::before {
 }
 
 @keyframes slideUp {
-    from { 
+    from {
         opacity: 0;
         transform: translateY(20px);
     }
-    to { 
+    to {
         opacity: 1;
         transform: translateY(0);
+    }
+}
+
+/* Prospect Real-time Status Styles */
+.prospect-analysing {
+    position: relative;
+    background: linear-gradient(90deg,
+        rgba(59, 130, 246, 0.05) 0%,
+        rgba(59, 130, 246, 0.15) 50%,
+        rgba(59, 130, 246, 0.05) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmerRow 2s ease-in-out infinite;
+}
+
+@keyframes shimmerRow {
+    0% {
+        background-position: -200% 0;
+    }
+    100% {
+        background-position: 200% 0;
+    }
+}
+
+.prospect-done {
+    border: 2px solid #10B981 !important;
+    background-color: rgba(16, 185, 129, 0.05) !important;
+    position: relative;
+}
+
+.prospect-done-checkmark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    margin-right: 8px;
+    color: #10B981;
+    animation: checkmarkAppear 0.3s ease-out;
+}
+
+.prospect-done-checkmark svg {
+    width: 20px;
+    height: 20px;
+    stroke-width: 2.5;
+}
+
+@keyframes checkmarkAppear {
+    0% {
+        opacity: 0;
+        transform: scale(0.5);
+    }
+    50% {
+        transform: scale(1.1);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1);
     }
 }
 

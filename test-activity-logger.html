@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Activity Logger</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="logActivity.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Sora', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 1.8rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .header p {
+            opacity: 0.9;
+            font-size: 0.95rem;
+        }
+        
+        .content {
+            padding: 2rem;
+        }
+        
+        .section {
+            margin-bottom: 2rem;
+            padding: 1.5rem;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+        }
+        
+        .section h2 {
+            color: #333;
+            margin-bottom: 1rem;
+            font-size: 1.2rem;
+        }
+        
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        button {
+            padding: 0.75rem 1rem;
+            border: none;
+            border-radius: 6px;
+            background: #667eea;
+            color: white;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: 'Sora', Arial, sans-serif;
+        }
+        
+        button:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        button.secondary {
+            background: #999;
+        }
+        
+        button.secondary:hover {
+            background: #888;
+        }
+        
+        button.danger {
+            background: #ef4444;
+        }
+        
+        button.danger:hover {
+            background: #dc2626;
+        }
+        
+        input {
+            padding: 0.75rem;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-family: 'Sora', Arial, sans-serif;
+            width: 100%;
+        }
+        
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .info-box {
+            background: #f0f4ff;
+            border-left: 4px solid #667eea;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+        
+        .success {
+            background: #dcfce7;
+            border-left-color: #22c55e;
+            color: #165e31;
+        }
+        
+        .error {
+            background: #fee2e2;
+            border-left-color: #ef4444;
+            color: #7f1d1d;
+        }
+        
+        .warning {
+            background: #fef3c7;
+            border-left-color: #f59e0b;
+            color: #78350f;
+        }
+        
+        .log-container {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            padding: 1rem;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+        }
+        
+        .log-entry {
+            padding: 0.5rem;
+            margin-bottom: 0.5rem;
+            border-left: 3px solid #667eea;
+            padding-left: 1rem;
+            background: white;
+            border-radius: 3px;
+        }
+        
+        .log-entry.success {
+            border-left-color: #22c55e;
+        }
+        
+        .log-entry.error {
+            border-left-color: #ef4444;
+        }
+        
+        .log-entry.warning {
+            border-left-color: #f59e0b;
+        }
+        
+        .timestamp {
+            color: #999;
+            font-size: 0.8rem;
+        }
+        
+        .status {
+            padding: 1rem;
+            background: #f0f4ff;
+            border-radius: 6px;
+            margin-bottom: 1rem;
+        }
+        
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #e0e0f0;
+        }
+        
+        .status-item:last-child {
+            border-bottom: none;
+        }
+        
+        .status-label {
+            font-weight: 500;
+            color: #333;
+        }
+        
+        .status-value {
+            color: #667eea;
+            font-weight: 600;
+        }
+        
+        .input-group {
+            margin-bottom: 1rem;
+            display: grid;
+            gap: 0.5rem;
+        }
+        
+        .input-label {
+            font-weight: 500;
+            color: #333;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🧪 Activity Logger Test Suite</h1>
+            <p>Test du système de logging des activités utilisateur</p>
+        </div>
+        
+        <div class="content">
+            <!-- Connection Status -->
+            <div class="section">
+                <h2>📡 État de la Connexion</h2>
+                <div class="status">
+                    <div class="status-item">
+                        <span class="status-label">Supabase Client:</span>
+                        <span class="status-value" id="statusSupabase">❌ Non initialisé</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Activity Logger:</span>
+                        <span class="status-value" id="statusLogger">❌ Non initialisé</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">User ID:</span>
+                        <span class="status-value" id="statusUserId">- Non défini</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Rate Limit:</span>
+                        <span class="status-value" id="statusRateLimit">60 secondes / utilisateur</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Setup -->
+            <div class="section">
+                <h2>⚙️ Configuration</h2>
+                <div class="input-group">
+                    <label class="input-label">Supabase URL (optionnel)</label>
+                    <input type="text" id="supabaseUrl" placeholder="https://your-project.supabase.co" value="https://umyfwukmztoheladdskl.supabase.co">
+                </div>
+                <div class="input-group">
+                    <label class="input-label">Supabase Anonymous Key (optionnel)</label>
+                    <input type="password" id="supabaseKey" placeholder="eyJhbGciOiJIUzI1NiIs..." value="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVteWZ3dWttenRvaGVsYWRkc2tsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg5NTk0NjgsImV4cCI6MjA3NDUzNTQ2OH0.VfPX_hF79hinKyDc4qTJ6IHZMiY82BUoBtsJg9uGpzc">
+                </div>
+                <div class="input-group">
+                    <label class="input-label">User ID de Test</label>
+                    <input type="number" id="userId" placeholder="1" value="1" min="1">
+                </div>
+                <button onclick="initializeConnection()">✅ Initialiser la Connexion</button>
+            </div>
+            
+            <!-- Test Activity Logging -->
+            <div class="section">
+                <h2>📝 Test de Logging d'Activités</h2>
+                <div class="controls">
+                    <button onclick="testLogin()">🔑 Login</button>
+                    <button onclick="testLogout()">🚪 Logout</button>
+                    <button onclick="testApiCall()">🌐 API Call</button>
+                    <button onclick="testExport()">📊 Export</button>
+                    <button onclick="testCustom()">⚙️ Custom</button>
+                    <button onclick="testQuery()">🔍 Query</button>
+                </div>
+            </div>
+            
+            <!-- Rate Limiting Tests -->
+            <div class="section">
+                <h2>⏱️ Test du Rate Limiting</h2>
+                <div class="info-box warning">
+                    ⚠️ Limitation: 1 log par minute par utilisateur. Ces tests vont afficher le rate limiting en action.
+                </div>
+                <div class="controls">
+                    <button onclick="testRateLimitRapid()">🚀 Logs Rapides (x5)</button>
+                    <button onclick="testRateLimitCooldown()">⏳ Vérifier Cooldown</button>
+                    <button onclick="resetRateLimit()">🔄 Reset Rate Limit</button>
+                </div>
+            </div>
+            
+            <!-- Data Retrieval -->
+            <div class="section">
+                <h2>📥 Récupération des Données</h2>
+                <div class="controls">
+                    <button onclick="fetchUserLogs()">📋 Logs de l'Utilisateur</button>
+                    <button onclick="fetchAllLogs()">📚 Tous les Logs</button>
+                    <button onclick="getQueryStats()">📈 Statistiques</button>
+                    <button onclick="clearOldLogs()">🗑️ Nettoyer les Anciens</button>
+                </div>
+            </div>
+            
+            <!-- Utilities -->
+            <div class="section">
+                <h2>🛠️ Utilitaires</h2>
+                <div class="controls">
+                    <button class="secondary" onclick="exportLogsJSON()">💾 Export JSON</button>
+                    <button class="secondary" onclick="printStatus()">🔍 Imprimer État</button>
+                    <button class="danger" onclick="clearLogs()">❌ Effacer Tous les Logs</button>
+                </div>
+            </div>
+            
+            <!-- Console Output -->
+            <div class="section">
+                <h2>📺 Sortie Console</h2>
+                <div class="log-container" id="logOutput">
+                    <div class="log-entry warning">
+                        <span class="timestamp">[Initialisation]</span> Console de test - En attente des événements...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://umyfwukmztoheladdskl.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVteWZ3dWttenRvaGVsYWRkc2tsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg5NTk0NjgsImV4cCI6MjA3NDUzNTQ2OH0.VfPX_hF79hinKyDc4qTJ6IHZMiY82BUoBtsJg9uGpzc';
+        
+        let supabaseClient = null;
+        let testLogs = [];
+
+        function log(message, type = 'info') {
+            const container = document.getElementById('logOutput');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            
+            const now = new Date().toLocaleTimeString('fr-FR');
+            entry.innerHTML = `<span class="timestamp">[${now}]</span> ${message}`;
+            
+            container.appendChild(entry);
+            container.scrollTop = container.scrollHeight;
+            
+            testLogs.push({ timestamp: now, message, type });
+        }
+
+        function updateStatus() {
+            document.getElementById('statusSupabase').textContent = supabaseClient ? '✅ Connecté' : '❌ Non connecté';
+            document.getElementById('statusLogger').textContent = (typeof activityLogger !== 'undefined' && activityLogger.supabaseClient) ? '✅ Initialisé' : '❌ Non initialisé';
+            document.getElementById('statusUserId').textContent = document.getElementById('userId').value || '- Non défini';
+        }
+
+        async function initializeConnection() {
+            try {
+                const url = document.getElementById('supabaseUrl').value || SUPABASE_URL;
+                const key = document.getElementById('supabaseKey').value || SUPABASE_ANON_KEY;
+                
+                supabaseClient = window.supabase.createClient(url, key);
+                activityLogger.setSupabaseClient(supabaseClient);
+                
+                log('✅ Connexion Supabase initialisée', 'success');
+                updateStatus();
+            } catch (error) {
+                log(`❌ Erreur d'initialisation: ${error.message}`, 'error');
+            }
+        }
+
+        async function testLogin() {
+            const userId = parseInt(document.getElementById('userId').value);
+            try {
+                log('📝 Logging login...', 'info');
+                const result = await activityLogger.logLogin(userId, 'test@example.com');
+                if (result !== false) {
+                    log('✅ Login logged successfully', 'success');
+                } else {
+                    log('⏱️ Rate limited - Prochaine tentative possible dans ' + activityLogger.getRemainingCooldown(userId) + 'ms', 'warning');
+                }
+            } catch (error) {
+                log(`❌ Erreur: ${error.message}`, 'error');
+            }
+        }
+
+        async function testLogout() {
+            const userId = parseInt(document.getElementById('userId').value);
+            try {
+                log('📝 Logging logout...', 'info');
+                const result = await activityLogger.logLogout(userId);
+                if (result !== false) {
+                    log('✅ Logout logged successfully', 'success');
+                } else {
+                    log('⏱️ Rate limited', 'warning');
+                }
+            } catch (error) {
+                log(`❌ Erreur: ${error.message}`, 'error');
+            }
+        }
+
+        async function testApiCall() {
+            const userId = parseInt(document.getElementById('userId').value);
+            try {
+                log('📝 Logging API call...', 'info');
+                const result = await activityLogger.logApiCall(userId, '/crm_prospects', 'GET', 200);
+                if (result !== false) {
+                    log('✅ API call logged successfully', 'success');
+                } else {
+                    log('⏱️ Rate limited', 'warning');
+                }
+            } catch (error) {
+                log(`❌ Erreur: ${error.message}`, 'error');
+            }
+        }
+
+        async function testExport() {
+            const userId = parseInt(document.getElementById('userId').value);
+            try {
+                log('📝 Logging export...', 'info');
+                const result = await activityLogger.logExport(userId, 'prospects_csv', 250);
+                if (result !== false) {
+                    log('✅ Export logged successfully (250 records)', 'success');
+                } else {
+                    log('⏱️ Rate limited', 'warning');
+                }
+            } catch (error) {
+                log(`❌ Erreur: ${error.message}`, 'error');
+            }
+        }
+
+        async function testCustom() {
+            const userId = parseInt(document.getElementById('userId').value);
+            try {
+                log('📝 Logging custom activity...', 'info');
+                const result = await activityLogger.logActivity(userId, 'test_custom', {
+                    feature: 'test_suite',
+                    test_value: Math.random()
+                });
+                if (result !== false) {
+                    log('✅ Custom activity logged successfully', 'success');
+                } else {
+                    log('⏱️ Rate limited', 'warning');
+                }
+            } catch (error) {
+                log(`❌ Erreur: ${error.message}`, 'error');
+            }
+        }
+
+        async function testQuery() {
+            const userId = parseInt(document.getElementById('userId').value);
+            try {
+                log('📝 Logging Supabase query...', 'info');
+                await activityLogger.logSupabaseQuery(userId, 'crm_prospects', 'SELECT');
+                log('✅ Query logged (sampled)', 'success');
+            } catch (error) {
+                log(`❌ Erreur: ${error.message}`, 'error');
+            }
+        }
+
+        async function testRateLimitRapid() {
+            const userId = parseInt(document.getElementById('userId').value);
+            log('🚀 Test de rate limiting avec 5 logs rapides...', 'info');
+            
+            for (let i = 1; i <= 5; i++) {
+                const result = await activityLogger.logActivity(userId, `test_rapid_${i}`, { index: i });
+                if (result !== false) {
+                    log(`  [${i}/5] ✅ Log accepté`, 'success');
+                } else {
+                    log(`  [${i}/5] ⏱️ Rate limited (cooldown: ${activityLogger.getRemainingCooldown(userId)}ms)`, 'warning');
+                }
+                await new Promise(r => setTimeout(r, 100)); // 100ms delay
+            }
+            log('🏁 Test de rate limiting terminé', 'info');
+        }
+
+        function testRateLimitCooldown() {
+            const userId = parseInt(document.getElementById('userId').value);
+            const cooldown = activityLogger.getRemainingCooldown(userId);
+            if (cooldown > 0) {
+                log(`⏱️ Cooldown restant: ${cooldown}ms (~${(cooldown/1000).toFixed(1)}s)`, 'warning');
+            } else {
+                log(`✅ Prêt pour le prochain log`, 'success');
+            }
+        }
+
+        function resetRateLimit() {
+            const userId = parseInt(document.getElementById('userId').value);
+            activityLogger.lastLogTime[userId] = 0;
+            log('🔄 Rate limit réinitialisé pour l\'utilisateur ' + userId, 'success');
+        }
+
+        async function fetchUserLogs() {
+            const userId = parseInt(document.getElementById('userId').value);
+            try {
+                log('📥 Récupération des logs utilisateur...', 'info');
+                const logs = await activityLogger.getActivityLogs(userId, 10);
+                log(`✅ ${logs.length} logs trouvés pour l'utilisateur ${userId}`, 'success');
+                logs.forEach((log, i) => {
+                    log(`  [${i+1}] ${log.activity_type} - ${log.created_at}`, 'info');
+                });
+            } catch (error) {
+                log(`❌ Erreur: ${error.message}`, 'error');
+            }
+        }
+
+        async function fetchAllLogs() {
+            try {
+                log('📥 Récupération de tous les logs...', 'info');
+                const logs = await activityLogger.getAllActivityLogs(20);
+                log(`✅ ${logs.length} logs au total`, 'success');
+            } catch (error) {
+                log(`❌ Erreur: ${error.message}`, 'error');
+            }
+        }
+
+        function getQueryStats() {
+            const userId = parseInt(document.getElementById('userId').value);
+            const stats = activityLogger.getQueryStats(userId);
+            log(`📈 Statistiques pour l'utilisateur ${userId}:`, 'info');
+            log(`  Total queries: ${stats.total_queries}`, 'info');
+            log(`  Logs générés: ${stats.query_log.length}`, 'info');
+        }
+
+        async function clearOldLogs() {
+            try {
+                log('🗑️ Nettoyage des anciens logs (>30 jours)...', 'info');
+                const result = await activityLogger.clearOldLogs(30);
+                if (result) {
+                    log('✅ Ancien logs supprimés', 'success');
+                } else {
+                    log('❌ Erreur lors du nettoyage', 'error');
+                }
+            } catch (error) {
+                log(`❌ Erreur: ${error.message}`, 'error');
+            }
+        }
+
+        function exportLogsJSON() {
+            const dataStr = JSON.stringify(testLogs, null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `activity-logs-${new Date().getTime()}.json`;
+            link.click();
+            log('💾 Export JSON téléchargé', 'success');
+        }
+
+        function printStatus() {
+            console.log('=== Activity Logger Status ===');
+            console.log('Supabase Client:', supabaseClient ? 'Connected' : 'Not connected');
+            console.log('Logger Status:', typeof activityLogger !== 'undefined' ? 'Loaded' : 'Not loaded');
+            console.log('Current User ID:', document.getElementById('userId').value);
+            console.log('Test Logs:', testLogs.length);
+            console.log('Logger Instance:', activityLogger);
+            log('🔍 État imprimé dans la console du navigateur (F12)', 'info');
+        }
+
+        async function clearLogs() {
+            if (confirm('Êtes-vous sûr? Cette action ne peut pas être annulée.')) {
+                try {
+                    log('❌ Suppression de TOUS les logs...', 'warning');
+                    // Note: This would require admin access
+                    log('❌ Suppression impossible - accès admin requis', 'error');
+                } catch (error) {
+                    log(`❌ Erreur: ${error.message}`, 'error');
+                }
+            }
+        }
+
+        // Initialize on page load
+        window.addEventListener('load', () => {
+            log('🚀 Test Suite chargée', 'info');
+            updateStatus();
+        });
+    </script>
+</body>
+</html>
